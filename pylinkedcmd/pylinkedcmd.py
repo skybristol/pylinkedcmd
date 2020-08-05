@@ -14,26 +14,26 @@ class Sciencebase:
         self.fix_identifiers = ["ORCID", "WikiData"]
         self.wd = Wikidata()
 
-    def get_identified_sb_person(self, q):
+    def get_identified_sb_person(self, email):
         '''
         Function does some specialized stuff with ScienceBase Directory person documents to package identifiers into
         the identifiers object in a way that supports linked data operations. The purpose here is to generate a
         revised person document to commit to the ScienceBase Directory that supports further operations, based on the
         available identifiers, such as dynamically assembling a research record (publications, datasets, etc.).
 
-        :param q: Generally this is an email address which is mostly unique in the ScienceBase Directory and can be
+        :param email: Generally this is an email address which is mostly unique in the ScienceBase Directory and can be
         used to pull out a specific person record without needing to know the internal id
         :return: Python set containing a revised person record with new identifiers object and a boolean value indicating
         whether or not the given person record was modified with the new identifiers construct
         '''
         r = requests.get(
-            f"{self.sb_directory_people_api}?format=json&dataset=all&q={q}"
+            f"{self.sb_directory_people_api}?format=json&dataset=all&email={email}"
         ).json()
 
         if len(r["people"]) == 0:
-            raise ValueError('You cannot proceed without getting a person record')
+            return email
         elif len(r["people"]) > 1:
-            raise ValueError('Your query returned more than one person record. You need to constrain your search.')
+            return email
         else:
             # We have to get the person record with a separate process because it's different than what comes
             # back in the search result
@@ -51,7 +51,7 @@ class Sciencebase:
                 if "aliases" in person_record.keys():
                     name_list.extend([n["name"] for n in person_record["aliases"]])
 
-                person_identifiers = package_orcid_wikidata_ids(
+                person_identifiers = self.package_orcid_wikidata_ids(
                     person_record["orcId"],
                     name_list=name_list,
                     existing_ids=person_identifiers
@@ -84,18 +84,16 @@ class Sciencebase:
             emails = [emails]
 
         email_check = [(email, validators.email(email)) for email in emails]
+        valid_emails = [em[0] for em in email_check if em[1]]
         invalid_emails = [em[0] for em in email_check if not em[1]]
 
-        if len(invalid_emails) > 0:
-            raise ValueError(f"The following invalid email addresses should be corrected {invalid_emails}")
+        person_records = [self.get_identified_sb_person(email) for email in valid_emails]
 
-        try:
-            person_records = [get_identified_sb_person(email) for email in emails]
-        except ValueError as error:
-            return error.args
+        processable_person_records = [p for p in person_records if isinstance(p, tuple)]
+        non_processable_person_records = [p for p in person_records if isinstance(p, str)]
 
-        update_person_records = [i[0] for i in person_records if i[1]]
-        no_update_person_records = [i[0] for i in person_records if not i[1]]
+        update_person_records = [i[0] for i in processable_person_records if i[1]]
+        no_update_person_records = [i[0] for i in processable_person_records if not i[1]]
 
         if len(update_person_records) > 0:
 
@@ -123,7 +121,9 @@ class Sciencebase:
 
         return {
             "updatedPersonRecords": update_person_records,
-            "ignoredPersonRecords": no_update_person_records
+            "ignoredPersonRecords": no_update_person_records,
+            "invalidEmails": invalid_emails,
+            "nonProcessableEmails": non_processable_person_records
         }
 
     def package_orcid_wikidata_ids(self, orcid, name_list=list(), existing_ids=list()):
@@ -232,7 +232,7 @@ class Wikidata:
         sparql.setReturnFormat(JSON)
         result_set = sparql.query().convert()
 
-        if len(result_set["results"]["bindings"]) > 1:
+        if len(result_set["results"]["bindings"]) == 0:
             return None
         else:
             wikidata_id = result_set["results"]["bindings"][0]["item"]["value"]
