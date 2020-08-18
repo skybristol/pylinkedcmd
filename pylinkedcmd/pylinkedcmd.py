@@ -6,6 +6,8 @@ import sys
 from SPARQLWrapper import SPARQLWrapper, JSON
 import json
 from getpass import getpass
+import pydash
+import copy
 
 class Sciencebase:
     def __init__(self):
@@ -14,58 +16,95 @@ class Sciencebase:
         self.fix_identifiers = ["ORCID", "WikiData"]
         self.wd = Wikidata()
 
-    def get_identified_sb_person(self, email):
+    def lookup_sb_person_by_email(self, email):
+        '''
+        Searches the ScienceBase Directory for a person by their email address. Returns None if either no record or
+        more than one record is found because we cannot act on these in either case.
+
+        :param email: Must be a valid email string
+        :return: Either None if not found or the correctly formatted full person document (dict)
+        '''
+        if not validators.email(email):
+            raise ValueError("You must supply a valid email address")
+
+        r = requests.get(
+            f"{self.sb_directory_people_api}?format=json&dataset=all&email={email}"
+        ).json()
+
+        if len(r["people"]) != 1:
+            return None
+        else:
+            # We have to get the person record with a separate process because it's different than what comes
+            # back in the search result
+            person_record = requests.get(f'{r["people"][0]["link"]["href"]}?format=json').json()
+
+            return person_record
+
+    def identified_sb_person(self, person):
         '''
         Function does some specialized stuff with ScienceBase Directory person documents to package identifiers into
         the identifiers object in a way that supports linked data operations. The purpose here is to generate a
         revised person document to commit to the ScienceBase Directory that supports further operations, based on the
         available identifiers, such as dynamically assembling a research record (publications, datasets, etc.).
 
-        :param email: Generally this is an email address which is mostly unique in the ScienceBase Directory and can be
-        used to pull out a specific person record without needing to know the internal id
+        :param person: Dict containing a minimum of an email property that will kick off a series of lookups; may
+        contain already established API url to ScienceBase Directory identity, orcid, and/or wikidata_id
         :return: Python set containing a revised person record with new identifiers object and a boolean value indicating
         whether or not the given person record was modified with the new identifiers construct
         '''
-        r = requests.get(
-            f"{self.sb_directory_people_api}?format=json&dataset=all&email={email}"
-        ).json()
+        person_record = None
 
-        if len(r["people"]) == 0:
-            return email
-        elif len(r["people"]) > 1:
-            return email
+        if "api" in person.keys():
+            if not validators.url(person["api"]):
+                raise ValueError("The API supplied must be in a valid URL format")
+
+            person_record = requests.get(f"{person['api']}?format=json").json()
+
+        if person_record is None and "email" in person.keys():
+            person_record = self.lookup_sb_person_by_email(person["email"])
+
+        if person_record is None:
+            return None
+
+        if "identifiers" in person_record.keys():
+            person_identifiers = person_record["identifiers"]
         else:
-            # We have to get the person record with a separate process because it's different than what comes
-            # back in the search result
-            person_record = requests.get(f'{r["people"][0]["link"]["href"]}?format=json').json()
+            person_identifiers = list()
 
-            if "identifiers" in person_record.keys():
-                person_identifiers = person_record["identifiers"]
-            else:
-                person_identifiers = list()
+        the_orcid = None
+        if "orcid" in person.keys():
+            the_orcid = person["orcid"]
+        else:
+            the_orcid = person_record["orcId"]
 
-            # Right now having an ORCID is the trigger that we can link out to other stuff, so this only happens if
-            # we have an ORCID on board the person document
-            if "orcId" in person_record.keys():
-                name_list = [person_record["displayName"]]
-                if "aliases" in person_record.keys():
-                    name_list.extend([n["name"] for n in person_record["aliases"]])
+        the_wikidata_id = None
+        if "wikidata_id" in person.keys():
+            the_wikidata_id = person["wikidata_id"]
+        elif the_orcid is not None:
+            name_list = [person_record["displayName"]]
+            if "aliases" in person_record.keys():
+                name_list.extend([n["name"] for n in person_record["aliases"]])
 
-                person_identifiers = self.package_orcid_wikidata_ids(
-                    person_record["orcId"],
-                    name_list=name_list,
-                    existing_ids=person_identifiers
-                )
+            the_wikidata_id = self.wd.lookup_wikidata_by_orcid(
+                the_orcid,
+                name_list=name_list
+            )
 
-            if len(person_identifiers) > 0:
-                person_record["identifiers"] = person_identifiers
-                person_package = (person_record, True)
-            else:
-                person_package = (person_record, False)
+        person_identifiers = self.package_identifiers(
+            orcid=the_orcid,
+            wikidata_id=the_wikidata_id,
+            existing_ids=person_identifiers
+        )
 
-            return person_package
+        if len(person_identifiers) > 0:
+            person_record["identifiers"] = person_identifiers
+            person_package = (person_record, True)
+        else:
+            person_package = (person_record, False)
 
-    def update_sb_person_identifiers(self, emails):
+        return person_package
+
+    def update_sb_person_identifiers(self, person_packages):
         '''
         Works through a list of emails and executes update operations on them to update or insert identifiers into the
         person documents in the ScienceBase Directory in order to facilitate linked data operations. The function uses
@@ -76,24 +115,19 @@ class Sciencebase:
         raise an error if any of the emails result in person records that can't be retrieved with
         get_identified_sb_person().
 
-        :param emails: List of email addresses; puts a single string into a list if needed
+        :param person_packages: One or more dictionaries containing the necessary identifiers to update ScienceBase
+        Directory person documents. Keys include a minimum of an email address from which all other processes will be
+        triggered. Keys can also include the URL form of the ScienceBase Directory ID, orcid, and wikidata_id.
         :return: Python dictionary containing lists of person documents that were updated and/or not updated (because
         they didn't have anything able to be updated)
         '''
-        if not isinstance(emails, list):
-            emails = [emails]
+        if not isinstance(person_packages, list):
+            person_packages = [person_packages]
 
-        email_check = [(email, validators.email(email)) for email in emails]
-        valid_emails = [em[0] for em in email_check if em[1]]
-        invalid_emails = [em[0] for em in email_check if not em[1]]
+        update_package = [self.identified_sb_person(person_package) for person_package in person_packages]
 
-        person_records = [self.get_identified_sb_person(email) for email in valid_emails]
-
-        processable_person_records = [p for p in person_records if isinstance(p, tuple)]
-        non_processable_person_records = [p for p in person_records if isinstance(p, str)]
-
-        update_person_records = [i[0] for i in processable_person_records if i[1]]
-        no_update_person_records = [i[0] for i in processable_person_records if not i[1]]
+        update_person_records = [i[0] for i in update_package if i[1]]
+        no_update_person_records = [i[0] for i in update_package if not i[1]]
 
         if len(update_person_records) > 0:
 
@@ -122,33 +156,31 @@ class Sciencebase:
         return {
             "updatedPersonRecords": update_person_records,
             "ignoredPersonRecords": no_update_person_records,
-            "invalidEmails": invalid_emails,
-            "nonProcessableEmails": non_processable_person_records
         }
 
-    def package_orcid_wikidata_ids(self, orcid, name_list=list(), existing_ids=list()):
+    def package_identifiers(self, orcid=None, wikidata_id=None, existing_ids=list()):
         '''
         Packages an orcid in the manner ScienceBase Directory uses and then attempts to lookup a corresponding WikiData
         ID and packages that if found. This function is the key part of the process used in building out the identifiers
         in a ScienceBase person document.
 
         :param orcid: ORCID from the ScienceBase Person document
+        :param wikidata_id: WikiData ID; supplied if already available through a separate process
         :param name_list: List of names (including aliases if available) to help make sure we get the right WikiData ID
         :param existing_ids: Any existing identifiers from the ScienceBase Person document
         :return: List of dictionaries in structure used by ScienceBase with type and key properties
         '''
         if len(existing_ids) > 0:
             # Get rid of the identifiers we are going to refactor, keeping anything else
-            existing_ids = [i for i in existing_ids if i["type"] not in self.fix_identifiers]
+            existing_ids = [i for i in existing_ids if "type" in i.keys() and i["type"] not in self.fix_identifiers]
 
-        existing_ids.append(
-            {
-                "type": "ORCID",
-                "key": orcid
-            }
-        )
-
-        wikidata_id = self.wd.lookup_wikidata_by_orcid(orcid, name_list)
+        if orcid is not None:
+            existing_ids.append(
+                {
+                    "type": "ORCID",
+                    "key": orcid
+                }
+            )
 
         if wikidata_id is not None:
             if validators.url(wikidata_id):
@@ -180,17 +212,17 @@ class Sciencebase:
             data = requests.get(next_link).json()
 
             if len(data["people"]) > 0:
-                orcid_person_list.extend(
-                    [
-                        {
-                            "api": i["link"]["href"],
-                            "displayName": i["displayName"],
-                            "email": i["email"],
-                            "orcid": i["orcId"]
-                        }
-                        for i in data["people"]
-                    ]
-                )
+                for person in data["people"]:
+                    this_person = {
+                                "api": person["link"]["href"],
+                                "displayName": person["displayName"],
+                                "email": person["email"],
+                                "orcid": person["orcId"]
+                            }
+                    if "identifiers" in person.keys():
+                        this_person["identifiers"] = person["identifiers"]
+
+                    orcid_person_list.extend(this_person)
 
             if "nextlink" in data.keys():
                 next_link = data["nextlink"]["url"]
@@ -204,7 +236,27 @@ class Wikidata:
     def __init__(self):
         self.description = "Set of functions for interacting with the WikiData API"
         self.wikidata_endpoint = "https://query.wikidata.org/sparql"
+        self.entity_data_root = "https://www.wikidata.org/wiki/Special:EntityData/"
         self.user_agent = f"pylinkedcmd/{sys.version_info[0]}.{sys.version_info[1]}"
+        self.sparql = SPARQLWrapper(self.wikidata_endpoint, agent=self.user_agent)
+        self.sparql.setReturnFormat(JSON)
+
+    def get_wd_sparql_results(self, query):
+        '''
+        Runs a given SPARQL query and returns results
+
+        :param query: SPARQL query string
+        :return: WikiData SPARQL end point result set
+        '''
+        function_sparql = self.sparql
+        function_sparql.setQuery(query)
+
+        try:
+            result_set = function_sparql.query().convert()
+        except Exception as e:
+            raise ValueError(f"SPARQL query could not be run - {e}")
+
+        return result_set
 
     def lookup_wikidata_by_orcid(self, orc_id, name_list=list(), name_match_threshold=90):
         '''
@@ -227,10 +279,7 @@ class Wikidata:
         }
         LIMIT 10""" % (orc_id)
 
-        sparql = SPARQLWrapper(self.wikidata_endpoint, agent=self.user_agent)
-        sparql.setQuery(query)
-        sparql.setReturnFormat(JSON)
-        result_set = sparql.query().convert()
+        result_set = self.get_wd_sparql_results(query)
 
         if len(result_set["results"]["bindings"]) == 0:
             return None
@@ -249,3 +298,218 @@ class Wikidata:
                     return None
 
             return wikidata_id
+
+    def links_on_item(self, item_id):
+        '''
+        Runs a SPARQL query for all items that link to a particular item ID as either subject or object. Essentially,
+        this results in the "what links here" that is provided via WikiData.
+
+        :param item_id: Valid "Q" type identifier for a WikiData item
+        :return: Returns a result set of subject, object, predicate triples for further processing or None if no
+        results found
+        '''
+        query = """PREFIX wd: <http://www.wikidata.org/entity/>
+        CONSTRUCT {
+          wd:Q98058015 ?p1 ?o.
+          ?s ?p2 wd:%s.
+        }
+        WHERE {
+          {wd:%s ?p1 ?o.}
+          UNION
+          {?s ?p2 wd:%s.}
+        }""" % (item_id, item_id, item_id)
+
+        result_set = self.get_wd_sparql_results(query)
+
+        if len(result_set["results"]["bindings"]) == 0:
+            return None
+        else:
+            return result_set["results"]["bindings"]
+
+    def wd_property(self, property_id):
+        '''
+        Looks up a WikiData property ("P" identifier) and returns a basic data structure useful for expressing
+        "resolved" properties as item statements. The basic label and description information is useful in determining
+        what the property may be used for. Properties have other useful properties that may need to be worked through
+        over time. Initially, I am using this to get back the formatterUrl value that can be used to format a
+        resolvable URL for certain types of identifiers on items.
+
+        :param property_id: Valid "P" identifier for a property
+        :return: Dictionary containing a simplified property document for further processing
+        '''
+        if property_id[:1] != "P":
+            raise ValueError("Requires a 'P' identifier for a WikiData property")
+
+        property_data = {
+            "uri": f"{self.entity_data_root}{property_id}.json"
+        }
+
+        try:
+            r_prop = requests.get(property_data["uri"]).json()
+        except Exception as e:
+            raise ValueError("The identifier provided resulted in no results from WikiData")
+
+        property_data["title"] = pydash.get(r_prop, f'entities.{property_id}.title')
+        property_data["id"] = pydash.get(r_prop, f'entities.{property_id}.id')
+        property_data["label_en"] = pydash.get(r_prop, f'entities.{property_id}.labels.en.value')
+        property_data["description_en"] = pydash.get(r_prop, f'entities.{property_id}.descriptions.en.value')
+        property_data["formatter_url"] = pydash.get(
+            r_prop,
+            f'entities.{property_id}.claims.P1630[0].mainsnak.datavalue.value'
+        )
+
+        return property_data
+
+    def wd_item(
+        self,
+        entity_id,
+        include_aliases=False,
+        include_statements=True,
+        include_raw_statements=False
+    ):
+        '''
+        Builds a formatted document for a given WikiData item ("Q" identifier). There are many ways of accessing an
+        item via SPARQL, APIs, and content negotiation. Getting to everything associated with an item in a way that
+        does not require a massive number of queries has proven difficult. This is the best method I've come up with
+        so far, but more experimentation is needed. This has mainly been tuned to retrieve information about people,
+        but it can be used to return basic information about anything. The main area that will be variable for
+        different kinds of items will be the statements/claims.
+
+        :param entity_id: Valid "Q" identifier for an item/entity
+        :param include_aliases: Include the aliases for an item or not
+        :param include_statements: Process the statements/claims part of the item information or not
+        :param include_raw_statements: If processing the statements, include the raw statement data or not
+        (Additional work is needed on specialized processing methods for particular types of properties. It's useful to
+        be able to see the raw results for working through these.)
+        :return: Dictionary containing high level attributes for an item, focusing on English language label, etc. and
+        an array of statements processed from the claims.
+        '''
+        if entity_id[:1] != "Q":
+            raise ValueError("Requires a 'Q' identifier for a WikiData item")
+
+        entity_data = {
+            "uri": f"{self.entity_data_root}{entity_id}.json"
+        }
+
+        try:
+            r_entity = requests.get(entity_data["uri"]).json()
+        except Exception as e:
+            raise ValueError("The identifier provided resulted in no results from WikiData")
+
+        entity_data["lastrevid"] = pydash.get(r_entity, f"entities.{entity_id}.lastrevid")
+        entity_data["modified"] = pydash.get(r_entity, f"entities.{entity_id}.modified")
+        entity_data["label_en"] = pydash.get(r_entity, f"entities.{entity_id}.labels.en.value")
+        entity_data["description_en"] = pydash.get(r_entity, f"entities.{entity_id}.descriptions.en.value")
+
+        if include_aliases and bool(r_entity["entities"][entity_id]["aliases"]):
+            entity_data["aliases"] = [i["value"] for i in r_entity["entities"][entity_id]["aliases"]["en"]]
+
+        if include_statements:
+            entity_data["statements"] = list()
+
+            for key, value in pydash.get(r_entity, f"entities.{entity_id}.claims").items():
+                property_attributes = self.wd_property(key)
+                property_attributes["url"] = None
+
+                for instance in value:
+                    this_instance_attributes = copy.deepcopy(property_attributes)
+
+                    if include_raw_statements:
+                        this_instance_attributes["raw_data"] = instance
+
+                    property_value = pydash.get(instance, "mainsnak.datavalue.value")
+
+                    if isinstance(property_value, str):
+                        this_instance_attributes["value"] = property_value
+                    elif isinstance(property_value, dict) \
+                        and "entity-type" in property_value.keys() \
+                            and property_value["entity-type"] == "item":
+                        resolved_prop_value = self.wd_item(property_value["id"], include_statements=False)
+                        this_instance_attributes["value"] = resolved_prop_value["label_en"]
+                        this_instance_attributes["url"] = f"{self.entity_data_root}{property_value['id']}"
+                    elif isinstance(property_value, dict) \
+                        and "time" in property_value.keys():
+                        this_instance_attributes["value"] = property_value["time"]
+                    elif isinstance(property_value, dict) \
+                        and "text" in property_value.keys():
+                        this_instance_attributes["value"] = property_value["text"]
+
+                    if this_instance_attributes["formatter_url"] is not None:
+                        this_instance_attributes["url"] = this_instance_attributes["formatter_url"].replace(
+                            "$1",
+                            this_instance_attributes["value"]
+                        )
+
+                    entity_data["statements"].append(this_instance_attributes)
+
+        return entity_data
+
+    def get_authored_articles(self, author_id, return_result="full"):
+        '''
+        Runs a SPARQL query to look for anything authored by a WikiData item (usually a person but it only looks for
+        authored by the ID provided). Will either return just the identifiers for the items found or will run the
+        function to collect item properties on those IDs to return a useful recordset.
+
+        :param author_id: Valid 'Q' identifier for a WikiData item
+        :param return_result: Either "full" or "ids" to specify the return type
+        :return: Either list of identifier strings or list of dictionaries from the wd_item_properties
+        '''
+        if author_id[:1] != "Q":
+            raise ValueError("author_id must be a valid 'Q' identifier")
+
+        query = """SELECT ?article ?articleLabel 
+            WHERE {
+              ?article wdt:P50 wd:%s.
+              SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
+            }""" % (author_id)
+
+        results = self.get_wd_sparql_results(query)
+
+        article_id_list = [i["article"]["value"].split("/")[-1] for i in results["results"]["bindings"]]
+
+        if return_result == "full":
+            article_result = self.wd_item_properties(article_id_list, return_result="values")
+        else:
+            article_result = article_id_list
+
+        return article_result
+
+    def wd_item_properties(self, items, return_result="raw"):
+        '''
+        Runs a SPARQL query to collect all properties and property values for a list of WikiData Items. Will format
+        them by stripping out to just ids, property names, and property values if requested.
+
+        :param items: List of WikiData items (valid 'Q' identifiers)
+        :param return_result: Either raw by default or 'values' if you want just the simple label values
+        :return: List of dictionaries containing either simple values or raw query results
+        '''
+        items_string = ' '.join(f"wd:{i}" for i in items)
+
+        query = """SELECT ?itemName ?wdLabel ?ps_Label {
+          VALUES ?itemName {%s}
+          ?itemName ?p ?statement .
+          ?statement ?ps ?ps_ .
+
+          ?wd wikibase:claim ?p.
+          ?wd wikibase:statementProperty ?ps.
+
+          SERVICE wikibase:label { bd:serviceParam wikibase:language "en" }
+        } ORDER BY ?wd ?statement ?ps_""" % (items_string)
+
+        results = self.get_wd_sparql_results(query)
+
+        if return_result == "values":
+            property_data = list()
+            for item_prop in results["results"]["bindings"]:
+                property_data.append(
+                    {
+                        "item_id": item_prop["itemName"]["value"].split("/")[-1],
+                        "property": item_prop["wdLabel"]["value"],
+                        "value": item_prop["ps_Label"]["value"]
+                    }
+                )
+            return_results = property_data
+        else:
+            return_results = results["results"]["bindings"]
+
+        return return_results
