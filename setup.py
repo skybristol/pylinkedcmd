@@ -15,7 +15,8 @@ requirements = [
     'sciencebasepy',
     'fuzzywuzzy',
     'SPARQLWrapper',
-    'validators'
+    'validators',
+    'pydash'
 ]
 
 setup_requirements = [ ]
