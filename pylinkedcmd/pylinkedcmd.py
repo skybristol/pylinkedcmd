@@ -195,14 +195,16 @@ class Sciencebase:
 
         return existing_ids
 
-    def get_all_orcid(self):
+    def sb_people(self, filter="orcid", fields="api,identifiers"):
         '''
-        Uses the ScienceBase Directory search API to retrieve all person records with ORCID values. The ORCIDs were
-        put into their own top-level property for some reason instead of using the identifiers object. We can use this
-        function to grab everything and then run all documents through an update process. The top-level attribute is
-        where ORCID values are synchronized in from the DOI Active Directory, however, so we will need to continue to
-        maintain that connection.
+        Uses the ScienceBase Directory search API to retrieve all person records with possible filters and field
+        specifications. The main thing the SB Directory provides is a conduit to get all USGS staff via the sync with
+        the DOI Active Directory as well as previous staff members as those are simply flagged inactive in SB. The
+        Directory also contains non-USGS people who have become users at some point via myUSGS accounts. This function
+        provides a helper to retrieve and structure these records for other uses.
 
+        :param filter: Abstract filter options designed to pull back certain types of record sets for particular
+        purposes
         :return: List of dictionaries containing simplified attributes for person documents having an ORCID
         '''
         orcid_person_list = list()
@@ -210,26 +212,17 @@ class Sciencebase:
 
         while next_link is not None:
             data = requests.get(next_link).json()
-
-            if len(data["people"]) > 0:
-                for person in data["people"]:
-                    this_person = {
-                                "api": person["link"]["href"],
-                                "displayName": person["displayName"],
-                                "email": person["email"],
-                                "orcid": person["orcId"]
-                            }
-                    if "identifiers" in person.keys():
-                        this_person["identifiers"] = person["identifiers"]
-
-                    orcid_person_list.extend(this_person)
+            orcid_person_list.extend(data["people"])
 
             if "nextlink" in data.keys():
                 next_link = data["nextlink"]["url"]
             else:
                 next_link = None
 
-        return orcid_person_list
+        if return_result == "full":
+            return orcid_person_list
+        else:
+
 
 
 class Wikidata:
