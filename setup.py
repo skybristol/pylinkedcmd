@@ -16,7 +16,9 @@ requirements = [
     'fuzzywuzzy',
     'SPARQLWrapper',
     'validators',
-    'pydash'
+    'pydash',
+    'beautifulsoup4',
+    'python-Levenshtein'
 ]
 
 setup_requirements = [ ]

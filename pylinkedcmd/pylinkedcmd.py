@@ -8,6 +8,8 @@ import json
 from getpass import getpass
 import pydash
 import copy
+import re
+from bs4 import BeautifulSoup
 
 class Sciencebase:
     def __init__(self):
@@ -195,7 +197,7 @@ class Sciencebase:
 
         return existing_ids
 
-    def sb_people(self, filter="orcid", fields="api,identifiers"):
+    def sb_people(self, filter=None, fields="default"):
         '''
         Uses the ScienceBase Directory search API to retrieve all person records with possible filters and field
         specifications. The main thing the SB Directory provides is a conduit to get all USGS staff via the sync with
@@ -205,23 +207,38 @@ class Sciencebase:
 
         :param filter: Abstract filter options designed to pull back certain types of record sets for particular
         purposes
+        :param fields: Abstract set of fields to simplify person documents coming from the SB Directory API for ease
+        of use
         :return: List of dictionaries containing simplified attributes for person documents having an ORCID
         '''
-        orcid_person_list = list()
+        people = list()
         next_link = f"{self.sb_directory_people_api}?format=json&dataset=all&lq=_exists_:orcId&max=1000"
 
         while next_link is not None:
             data = requests.get(next_link).json()
-            orcid_person_list.extend(data["people"])
+            people.extend(data["people"])
 
             if "nextlink" in data.keys():
                 next_link = data["nextlink"]["url"]
             else:
                 next_link = None
 
-        if return_result == "full":
-            return orcid_person_list
-        else:
+        if fields == "default":
+            return people
+        elif fields == "simple":
+            simple_people = [
+                {
+                    "uri": p["link"]["href"],
+                    "displayName": p["displayName"],
+                    "email": p["email"],
+                    "identifiers": p["identifiers"]
+                }
+                for p in people
+                if "identifiers" in p.keys()
+                   and next((i for i in p["identifiers"] if i["type"] == "WikiData"), None) is not None
+            ]
+
+            return simple_people
 
 
 
@@ -506,3 +523,134 @@ class Wikidata:
             return_results = results["results"]["bindings"]
 
         return return_results
+
+
+class UsgsWeb:
+    def __init__(self):
+        self.usgs_pro_page_listing = "https://www.usgs.gov/connect/staff-profiles"
+        self.expertise_link_pattern = re.compile(r"^\/science-explorer-results\?*")
+        self.profile_link_pattern = re.compile(r"^\/staff-profiles\/*")
+        self.mailto_link_pattern = re.compile(r"^mailto:")
+        self.usgs_web_root = "https://usgs.gov"
+
+    def get_staff_inventory_pages(self, title_="Go to last page"):
+        '''
+        Unfortunately, the only way to get the entire staff inventory as presented on the USGS web that I've found is to
+        iterate over every page in the closed web system and scrape listings. To figure out what pages are contained in
+        the listing without filters, we need to consult the first page and get a page number for the last listing from
+        a particular link. This function handles that process and gives us back every URL we need to hit.
+        :param title_: title of the link pointing to the last page of the inventory
+        :type title_: str
+        :return: list of URLs to every page comprising the entire inventory of USGS staff
+        '''
+        r = requests.get(self.usgs_pro_page_listing)
+        if r.status_code != 200:
+            return None
+        soup = BeautifulSoup(r.content, 'html.parser')
+
+        last_page_num = soup.find('a', title=title_)["href"].split("=")[-1]
+
+        inventory_url_list = [
+            f"{self.usgs_pro_page_listing}?page={n}" for n in range(0, int(last_page_num)+1)
+        ]
+
+        return inventory_url_list
+
+    def get_staff_listing(self, page_url, tag_="div", class_="views-column"):
+        '''
+        This function handles the process of fetching a given page from the staff listing inventory, extracting the
+        useful records and returning a listing.
+        :param page_url: URL to a specific staff listing page
+        :type page_url: str
+        :param tag_: HTML tag that combines with a class name to identify the part of the HTML document containing the
+        relevant listing sections
+        :type tag_: str
+        :param class_: name of the CSS class in the HTML document that indicates the relevant sections to process
+        :type class_: str
+        :return: list of dictionaries containing name, email, and profile from the process_staff_section function for
+        each person record found in the specified sections
+        '''
+        r = requests.get(page_url)
+        if r.status_code != 200:
+            return None
+        soup = BeautifulSoup(r.content, 'html.parser')
+
+        page_staff_listing = list()
+
+        for section in soup.findAll(tag_, class_=class_):
+            page_staff_listing.append(self.process_staff_section(section))
+
+        return page_staff_listing
+
+    def process_staff_section(self, section):
+        '''
+        Unfortunately, none of the accessible directory sources for USGS personnel seem to have the link to USGS
+        staff profile pages. The only location that I can find these is through the USGS web page at
+        https://www.usgs.gov/connect/staff-profiles, and the only way to get at those data is through a web scraper.
+        This function handles the process of extracting a usable data structure from the section on the pages that
+        contain individual person listing.
+        :param section: a BeautifulSoup4 data object containing the div for a given staff person listing from which we
+        need to extract useful information
+        :type section: bs4.element.Tag
+        :return: dictionary containing the name, email, and profile (URL) for a person (email and profile will be
+        returned with None if not found in the record
+        '''
+        profile_page_link = section.find("a", href=self.profile_link_pattern)
+        email_link = section.find("a", href=self.mailto_link_pattern)
+
+        person_record = dict()
+
+        if profile_page_link is not None:
+            person_record["name"] = profile_page_link.text
+            person_record["profile"] = f'{self.usgs_web_root}{profile_page_link["href"]}'
+        else:
+            person_record["profile"] = None
+            name_container = section.find("h4", class_="field-content")
+            if name_container is not None:
+                person_record["name"] = name_container.text
+
+        if email_link is not None:
+            person_record["email"] = email_link.text
+
+        return person_record
+
+    def scrape_profile(self, page_url):
+        '''
+        Unfortunately, there is no current programmatic way of getting at USGS staff profile pages, where at least some
+        staff have put significant effort into rounding out their available online information. For some, these pages
+        represent the best personally managed location to get at published works and other details. For now, the most
+        interesting bits from these pages include a self-asserted list of "expertise" keywords drawn from the USGS
+        Thesaurus along with a body section containing variable content. This function collects the expertise keywords
+        for further analysis, pulls out links from the body (which can be compared with other sources), and shoves the
+        body text as a whole into the data for further processing.
+        :param page_url: URL to the profile page that can be used as a unique key
+        :return: dictionary containing the url, list of expertise keywords (if available), list of links (text and
+        href) values in dictionaries, and the full body html as a string
+        '''
+        r = requests.get(page_url)
+        if r.status_code != 200:
+            return None
+
+        soup = BeautifulSoup(r.content, 'html.parser')
+
+        profile_page_data = {
+            "profile": page_url,
+        }
+
+        expertise_section = soup.find("section", class_="staff-expertise")
+        if expertise_section is not None:
+            profile_page_data["expertise"] = [
+                t.text for t in expertise_section.findAll("a", href=self.expertise_link_pattern)
+            ]
+
+        profile_body_content = soup.find("div", class_="usgs-body")
+        if profile_body_content is not None:
+            profile_page_data["scraped_body_html"] = str(profile_body_content)
+            profile_page_data["body_content_links"] = [
+                {
+                    "link_text": l.text,
+                    "link_href": l["href"]
+                } for l in profile_body_content.findAll("a")
+            ]
+
+        return profile_page_data
