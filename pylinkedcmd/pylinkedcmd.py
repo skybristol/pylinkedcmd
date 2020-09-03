@@ -10,6 +10,7 @@ import pydash
 import copy
 import re
 from bs4 import BeautifulSoup
+import pandas as pd
 
 class Sciencebase:
     def __init__(self):
@@ -30,7 +31,7 @@ class Sciencebase:
             raise ValueError("You must supply a valid email address")
 
         r = requests.get(
-            f"{self.sb_directory_people_api}?format=json&dataset=all&email={email}"
+            f"{self.sb_directory_people_api}?format=json&email={email}"
         ).json()
 
         if len(r["people"]) != 1:
@@ -240,6 +241,36 @@ class Sciencebase:
 
             return simple_people
 
+    def update_person(self, sb_person):
+        if isinstance(sb_person, str):
+            sb_person = [sb_person]
+
+        update_log = list()
+
+        try:
+            sb = SbSession()
+            sb.login(input("User Name: "), getpass())
+        except Exception as e:
+            raise ValueError(f"Something went wrong in trying to authenticate to ScienceBase: {e}")
+
+        for person in sb_person:
+            put_link = person["link"]["href"]
+            update_log.append(put_link)
+
+            try:
+                sb._session.headers.update({'Content-Type': 'application/json'})
+                r = sb._session.put(
+                    put_link,
+                    data=json.dumps(person),
+                    headers={
+                        "content-type": "application/json",
+                        "accept": "application/json"
+                    }
+                )
+            except Exception as e:
+                raise ValueError(f"Something went wrong trying to send updates to ScienceBase: {e}")
+
+        return update_log
 
 
 class Wikidata:
@@ -531,6 +562,8 @@ class UsgsWeb:
         self.expertise_link_pattern = re.compile(r"^\/science-explorer-results\?*")
         self.profile_link_pattern = re.compile(r"^\/staff-profiles\/*")
         self.mailto_link_pattern = re.compile(r"^mailto:")
+        self.tel_link_pattern = re.compile(r"^tel:")
+        self.org_link_pattern = re.compile(r"^https\:\/\/www.usgs.gov*")
         self.usgs_web_root = "https://usgs.gov"
 
     def get_staff_inventory_pages(self, title_="Go to last page"):
@@ -582,7 +615,7 @@ class UsgsWeb:
 
         return page_staff_listing
 
-    def process_staff_section(self, section):
+    def process_staff_section(self, section, email_in_common=["ask@usgs.gov"]):
         '''
         Unfortunately, none of the accessible directory sources for USGS personnel seem to have the link to USGS
         staff profile pages. The only location that I can find these is through the USGS web page at
@@ -597,20 +630,48 @@ class UsgsWeb:
         '''
         profile_page_link = section.find("a", href=self.profile_link_pattern)
         email_link = section.find("a", href=self.mailto_link_pattern)
+        tel_link = section.find("a", href=self.tel_link_pattern)
+        org_link = section.find("a", href=self.org_link_pattern)
 
-        person_record = dict()
+        person_record = {
+            "name": None,
+            "title": None,
+            "organization_name": None,
+            "organization_link": None,
+            "email": None,
+            "profile": None,
+            "telephone": None
+        }
 
         if profile_page_link is not None:
-            person_record["name"] = profile_page_link.text
+            person_record["name"] = profile_page_link.text.replace("\t", "").strip()
             person_record["profile"] = f'{self.usgs_web_root}{profile_page_link["href"]}'
         else:
             person_record["profile"] = None
             name_container = section.find("h4", class_="field-content")
             if name_container is not None:
-                person_record["name"] = name_container.text
+                person_record["name"] = name_container.text.replace("\t", "")
+
+        if org_link is not None:
+            person_record["organization_name"] = org_link.text.replace("\t", "").strip()
+            person_record["organization_link"] = org_link["href"]
 
         if email_link is not None:
-            person_record["email"] = email_link.text
+            person_record["email"] = email_link.text.replace("\t", "").strip()
+
+        if tel_link is not None:
+            person_record["telephone"] = tel_link.text.replace("\t", "").strip()
+
+        bolded_item = section.find("b")
+        if bolded_item is not None:
+            person_record["title"] = bolded_item.text.replace("\t", "").strip()
+
+        if person_record["email"] is not None and person_record["email"] not in email_in_common:
+            person_record["identifier"] = person_record["email"]
+        elif person_record["email"] in email_in_common and person_record["profile"] is not None:
+            person_record["identifier"] = person_record["profile"]
+        else:
+            person_record["identifier"] = person_record["name"]
 
         return person_record
 
@@ -654,3 +715,21 @@ class UsgsWeb:
             ]
 
         return profile_page_data
+
+    def get_unique_staff(self, staff_list, return_type="dict"):
+        df = pd.DataFrame([dict(t) for t in {tuple(d.items()) for d in staff_list}])
+
+        df_grouped_staff = df.groupby('identifier').agg(
+            {
+                'profile': lambda x: list(set(list(x))),
+                'email': lambda x: list(set(list(x))),
+                'name': lambda x: list(set(list(x))),
+                'telephone': lambda x: list(set(list(x))),
+                'title': lambda x: list(set(list(x)))
+            }
+        ).reset_index()
+
+        if return_type == "dict":
+            return df_grouped_staff.to_dict(orient="records")
+        else:
+            return df_grouped_staff
