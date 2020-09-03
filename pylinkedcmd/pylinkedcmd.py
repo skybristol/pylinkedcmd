@@ -724,6 +724,8 @@ class UsgsWeb:
                 'profile': lambda x: list(set(list(x))),
                 'email': lambda x: list(set(list(x))),
                 'name': lambda x: list(set(list(x))),
+                'organization_name': lambda x: list(set(list(x))),
+                'organization_link': lambda x: list(set(list(x))),
                 'telephone': lambda x: list(set(list(x))),
                 'title': lambda x: list(set(list(x)))
             }
