@@ -563,7 +563,7 @@ class UsgsWeb:
         self.profile_link_pattern = re.compile(r"^\/staff-profiles\/*")
         self.mailto_link_pattern = re.compile(r"^mailto:")
         self.tel_link_pattern = re.compile(r"^tel:")
-        self.org_link_pattern = re.compile(r"^https\:\/\/www.usgs.gov*")
+        self.org_link_pattern = re.compile(r"www.usgs.gov")
         self.usgs_web_root = "https://usgs.gov"
 
     def get_staff_inventory_pages(self, title_="Go to last page"):
