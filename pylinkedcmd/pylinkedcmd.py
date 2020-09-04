@@ -27,8 +27,8 @@ class Sciencebase:
         :param email: Must be a valid email string
         :return: Either None if not found or the correctly formatted full person document (dict)
         '''
-        if not validators.email(email):
-            raise ValueError("You must supply a valid email address")
+        #if not validators.email(email):
+        #    raise ValueError(f"You must supply a valid email address: {email}")
 
         r = requests.get(
             f"{self.sb_directory_people_api}?format=json&email={email}"
