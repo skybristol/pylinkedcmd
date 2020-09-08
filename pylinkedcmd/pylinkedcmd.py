@@ -35,13 +35,21 @@ class Sciencebase:
         ).json()
 
         if len(r["people"]) != 1:
-            return None
-        else:
-            # We have to get the person record with a separate process because it's different than what comes
-            # back in the search result
-            person_record = requests.get(f'{r["people"][0]["link"]["href"]}?format=json').json()
+            if email.split("@")[-1].lower() == "usgs.gov":
+                alternate_email = f'{email.split("@")[0].lower()}@contractor.usgs.gov'
 
-            return person_record
+                r = requests.get(
+                    f"{self.sb_directory_people_api}?format=json&email={alternate_email}"
+                ).json()
+
+        if len(r["people"]) != 1:
+            return None
+
+        # We have to get the person record with a separate process because it's different than what comes
+        # back in the search result
+        person_record = requests.get(f'{r["people"][0]["link"]["href"]}?format=json').json()
+
+        return person_record
 
     def identified_sb_person(self, person):
         '''
@@ -561,6 +569,7 @@ class UsgsWeb:
         self.usgs_pro_page_listing = "https://www.usgs.gov/connect/staff-profiles"
         self.expertise_link_pattern = re.compile(r"^\/science-explorer-results\?*")
         self.profile_link_pattern = re.compile(r"^\/staff-profiles\/*")
+        self.orcid_link_pattern = re.compile(r"^https:\/\/orcid.org\/*")
         self.mailto_link_pattern = re.compile(r"^mailto:")
         self.tel_link_pattern = re.compile(r"^tel:")
         self.org_link_pattern = re.compile(r"www.usgs.gov")
@@ -696,6 +705,13 @@ class UsgsWeb:
 
         profile_page_data = {
             "profile": page_url,
+            "display_name": None,
+            "profile_image_url": None,
+            "organization_name": None,
+            "organization_link": None,
+            "email": None,
+            "orcid": None,
+            "body_content_links": list(),
         }
 
         expertise_section = soup.find("section", class_="staff-expertise")
@@ -707,12 +723,51 @@ class UsgsWeb:
         profile_body_content = soup.find("div", class_="usgs-body")
         if profile_body_content is not None:
             profile_page_data["scraped_body_html"] = str(profile_body_content)
-            profile_page_data["body_content_links"] = [
+            profile_page_data["body_content_links"].extend([
                 {
                     "link_text": l.text,
                     "link_href": l["href"]
                 } for l in profile_body_content.findAll("a")
-            ]
+            ])
+
+        display_name_container = soup.find("div", class_="full-width col-sm-12")
+        if display_name_container is not None:
+            display_name_container_inner = display_name_container.find("h1", class_="page-header")
+            if display_name_container_inner is not None:
+                profile_page_data["display_name"] = display_name_container_inner.text
+
+        email_container = soup.find("div", class_="email")
+        if email_container is not None:
+            email_link = email_container.find("a", href=self.mailto_link_pattern)
+            if email_link is not None:
+                profile_page_data["email"] = email_link.text
+
+        organization_container = soup.find("h3", class_="staff-profile-subtitle h4")
+        if organization_container is not None:
+            organization_link_container = organization_container.find("a")
+            if organization_link_container is not None:
+                profile_page_data["organization_link"] = organization_link_container["href"]
+                profile_page_data["organization_name"] = organization_link_container.text
+
+        profile_image = soup.find("img", class_='staff-profile-image')
+        if profile_image is not None:
+            profile_page_data["profile_image_url"] = profile_image["src"]
+
+        orcid_link = soup.find("a", href=self.orcid_link_pattern)
+        if orcid_link is not None:
+            profile_page_data["orcid"] = orcid_link.text.split("/")[-1]
+
+        other_pubs_container = soup.find(
+            "div",
+            class_="entity entity-field-collection-item field-collection-item-field-non-usgs-publication clearfix"
+        )
+        if other_pubs_container is not None:
+            profile_page_data["body_content_links"].extend([
+                {
+                    "link_text": l.text,
+                    "link_href": l["href"]
+                } for l in other_pubs_container.findAll("a")
+            ])
 
         return profile_page_data
 
