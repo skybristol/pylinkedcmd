@@ -16,8 +16,54 @@ class Sciencebase:
     def __init__(self):
         self.description = "Set of functions for working with the ScienceBase Directory"
         self.sb_directory_people_api = "https://www.sciencebase.gov/directory/people"
+        self.sb_directory_org_api = "https://www.sciencebase.gov/directory/organization"
         self.fix_identifiers = ["ORCID", "WikiData"]
         self.wd = Wikidata()
+
+    def summarize_sb_person(self, person_doc):
+        ignore_props = [
+            "_classSimpleName",
+            "distinguishedName",
+            "name",
+            "type",
+            "displayText",
+            "richDescriptionHtml",
+            "username"
+        ]
+        new_person_doc = {
+            "uri": person_doc["link"]["href"],
+            "date_cached": datetime.utcnow().isoformat()
+        }
+        for k, v in person_doc.items():
+            if k not in ignore_props and isinstance(v, str):
+                new_person_doc[k] = v
+
+        if "identifiers" in person_doc.keys():
+            for i in person_doc["identifiers"]:
+                person_doc[f"identifier_{i['type']}"] = i["key"]
+
+        try:
+            new_person_doc["organization_name"] = person_doc["organization"]["displayText"]
+        except KeyError:
+            pass
+
+        try:
+            new_person_doc[
+                "organization_uri"] = f'{self.sb_directory_org_api}/{person_doc["organization"]["id"]}'
+        except KeyError:
+            pass
+
+        try:
+            new_person_doc["city"] = person_doc["primaryLocation"]["streetAddress"]["city"]
+        except KeyError:
+            pass
+
+        try:
+            new_person_doc["state"] = person_doc["primaryLocation"]["streetAddress"]["state"]
+        except KeyError:
+            pass
+
+        return new_person_doc
 
     def lookup_sb_person_by_email(self, email):
         '''
