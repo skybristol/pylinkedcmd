@@ -18,7 +18,8 @@ requirements = [
     'validators',
     'pydash',
     'beautifulsoup4',
-    'python-Levenshtein'
+    'python-Levenshtein',
+    'nltk'
 ]
 
 setup_requirements = [ ]

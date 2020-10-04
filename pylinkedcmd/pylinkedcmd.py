@@ -12,6 +12,9 @@ import copy
 import re
 from bs4 import BeautifulSoup
 import pandas as pd
+import math
+from nltk.tokenize import sent_tokenize
+
 
 class Sciencebase:
     def __init__(self):
@@ -752,6 +755,7 @@ class UsgsWeb:
 
         profile_page_data = {
             "profile": page_url,
+            "date_cached": datetime.utcnow().isoformat(),
             "display_name": None,
             "profile_image_url": None,
             "organization_name": None,
@@ -770,12 +774,18 @@ class UsgsWeb:
         profile_body_content = soup.find("div", class_="usgs-body")
         if profile_body_content is not None:
             profile_page_data["scraped_body_html"] = str(profile_body_content)
-            profile_page_data["body_content_links"].extend([
-                {
-                    "link_text": l.text,
-                    "link_href": l["href"]
-                } for l in profile_body_content.findAll("a")
-            ])
+            link_list = profile_body_content.findAll("a")
+            if link_list is not None:
+                for link in link_list:
+                    try:
+                        profile_page_data["body_content_links"].append({
+                            "link_text": link.text,
+                            "link_href": link["href"]
+                        })
+                    except Exception as e:
+                        print(e)
+                        continue
+
 
         display_name_container = soup.find("div", class_="full-width col-sm-12")
         if display_name_container is not None:
@@ -837,3 +847,151 @@ class UsgsWeb:
             return df_grouped_staff.to_dict(orient="records")
         else:
             return df_grouped_staff
+
+
+class Pw:
+    def __init__(self):
+        self.description = "Set of functions for working with the USGS Pubs Warehouse REST API a little more better"
+        self.publication_api = "https://pubs.er.usgs.gov/pubs-services/publication"
+
+    def get_pw_query_urls(self, year):
+        '''
+        Function helps to build out logical batches of USGS Pubs Warehouse REST API queries in order to retrieve all
+        records and cache elsewhere for more usability.
+        :param year: 4 digit year to build 1000 record batches for
+        :return: List of dictionaries containing the year, total record count, the URL for the query, and the date
+        the URL reference was determined
+        '''
+        pw_retrieval_list = list()
+
+        pw_url = f"{self.publication_api}?startYear={year}&endYear={year}"
+        pw_result = requests.get(f"{pw_url}&pageSize=1").json()
+
+        if pw_result["recordCount"] > 0:
+            for page_num in range(1, math.ceil(int(pw_result["recordCount"]) / 1000) + 1):
+                pw_retrieval_list.append({
+                    "year": year,
+                    "record_count": pw_result["recordCount"],
+                    "url": f"{pw_url}&page_size=1000&page_number={page_num}",
+                    "date_cached": datetime.utcnow().isoformat()
+                })
+            return pw_retrieval_list
+
+    def summarize_pw_record(self, pw_record):
+        '''
+        Function to summarize the important pieces of information from a USGS Pubs Warehouse record for a given pub
+        and normalize the related bits of information that we want to query on separately. We often want to do things
+        like analyze authors, author affiliations, cost centers, and links separately as well as pull out the text
+        parts useful in named entity recognition processes. This function provides that functionality off the live
+        REST API response while we work to get a better data solution in place. This produces six separate data
+        structures on a given batch of records that can be run in parallel. Each one is keyed on a new "uri" property
+        that is a resolvable identifier for the publication (something else that is missing from the REST API).
+        :param pw_record: Raw REST API response that can come from the API itself or a caching process that I've also
+        employed to grab everything up in batches and stash into pickle files for later processing
+        :return: summarized records as list of dictionaries, sentences tokenized from abstract and title for NER
+        processing, USGS cost centers, authors, author affiliations, and links
+        '''
+        summarized_record = dict()
+        record_sentences = list()
+
+        summarized_record["uri"] = f"{self.publication_api}/{pw_record['text'].split('-')[0].strip()}"
+        summarized_record["pw_id"] = pw_record["id"]
+        summarized_record["publicationYear"] = pw_record["publicationYear"]
+        summarized_record["title"] = pw_record["title"]
+        summarized_record["meta_text"] = pw_record["title"]
+        summarized_record["lastModifiedDate"] = pw_record["lastModifiedDate"]
+        summarized_record["summary_created"] = datetime.utcnow().isoformat()
+
+        record_sentences.append({
+            "uri": summarized_record["uri"],
+            "source": "title",
+            "sentence": summarized_record["title"]
+        })
+
+        if "docAbstract" in pw_record.keys():
+            abstract_soup = BeautifulSoup(pw_record["docAbstract"], 'html.parser')
+            if abstract_soup.get_text() != "No abstract available.":
+                summarized_record["abstract"] = abstract_soup.get_text()
+                summarized_record["meta_text"] = f"{summarized_record['meta_text']}. {summarized_record['abstract']}"
+                for sentence in sent_tokenize(summarized_record["abstract"]):
+                    record_sentences.append({
+                        "uri": summarized_record["uri"],
+                        "source": "abstract",
+                        "sentence": sentence
+                    })
+
+        try:
+            summarized_record["publisher"] = pw_record["publisher"]
+        except KeyError:
+            pass
+
+        try:
+            summarized_record["doi"] = pw_record["doi"]
+        except KeyError:
+            pass
+
+        try:
+            summarized_record["publicationType"] = pw_record["publicationType"]["text"]
+            summarized_record["publicationSubtype"] = pw_record["publicationSubtype"]["text"]
+            summarized_record["seriesTitle"] = pw_record["seriesTitle"]["text"]
+        except KeyError:
+            pass
+
+        try:
+            summarized_record["scienceBaseUri"] = pw_record["scienceBaseUri"]
+        except KeyError:
+            pass
+
+        if "costCenters" in pw_record.keys():
+            cost_centers = [
+                dict(
+                    item,
+                    **{
+                        'uri': summarized_record["uri"],
+                        'publicationYear': pw_record["publicationYear"]
+                    }
+                ) for item in pw_record["costCenters"]
+            ]
+        else:
+            cost_centers = None
+
+        if "contributors" in pw_record.keys() and "authors" in pw_record["contributors"].keys():
+            authors = [
+                dict(
+                    item,
+                    **{
+                        'uri': summarized_record["uri"],
+                        'publicationYear': pw_record["publicationYear"]
+                    }
+                ) for item in pw_record["contributors"]["authors"]
+            ]
+        else:
+            authors = None
+
+        if authors is not None:
+            affiliations = list()
+            for author in [a for a in authors if "affiliations" in a.keys() and len(a["affiliations"]) > 0]:
+                for affiliation in author["affiliations"]:
+                    affiliation["author_text"] = author["text"]
+                    affiliation["uri"] = author["uri"]
+                    affiliation["publicationYear"] = author["publicationYear"]
+                    if "orcid" in author.keys():
+                        affiliation["orcid"] = author["orcid"]
+                    if "email" in author.keys():
+                        affiliation["email"] = author["email"]
+                    affiliations.append(affiliation)
+        else:
+            affiliations = None
+
+        if "links" in pw_record.keys() and len(pw_record["links"]) > 0:
+            links = list()
+            for link in pw_record["links"]:
+                links.append({
+                    "uri": summarized_record["uri"],
+                    "link_url": link["url"],
+                    "link_type": link["type"]["text"]
+                })
+        else:
+            links = None
+
+        return summarized_record, record_sentences, cost_centers, authors, affiliations, links
