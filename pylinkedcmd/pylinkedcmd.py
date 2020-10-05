@@ -32,7 +32,8 @@ class Sciencebase:
             "type",
             "displayText",
             "richDescriptionHtml",
-            "username"
+            "username",
+            "organizationDisplayText"
         ]
         new_person_doc = {
             "uri": person_doc["link"]["href"],
@@ -44,7 +45,7 @@ class Sciencebase:
 
         if "identifiers" in person_doc.keys():
             for i in person_doc["identifiers"]:
-                person_doc[f"identifier_{i['type']}"] = i["key"]
+                new_person_doc[f"identifier_{i['type']}"] = i["key"]
 
         try:
             new_person_doc["organization_name"] = person_doc["organization"]["displayText"]
@@ -66,6 +67,9 @@ class Sciencebase:
             new_person_doc["state"] = person_doc["primaryLocation"]["streetAddress"]["state"]
         except KeyError:
             pass
+
+        if "email" in new_person_doc.keys():
+            new_person_doc["email"] = new_person_doc["email"].lower()
 
         return new_person_doc
 
@@ -446,7 +450,8 @@ class Wikidata:
         try:
             r_prop = requests.get(property_data["uri"]).json()
         except Exception as e:
-            raise ValueError("The identifier provided resulted in no results from WikiData")
+            print(property_id, e)
+            return None
 
         property_data["title"] = pydash.get(r_prop, f'entities.{property_id}.title')
         property_data["id"] = pydash.get(r_prop, f'entities.{property_id}.id')
@@ -493,7 +498,8 @@ class Wikidata:
         try:
             r_entity = requests.get(entity_data["uri"]).json()
         except Exception as e:
-            raise ValueError("The identifier provided resulted in no results from WikiData")
+            print(entity_id, e)
+            return None
 
         entity_data["lastrevid"] = pydash.get(r_entity, f"entities.{entity_id}.lastrevid")
         entity_data["modified"] = pydash.get(r_entity, f"entities.{entity_id}.modified")
@@ -612,6 +618,53 @@ class Wikidata:
             return_results = results["results"]["bindings"]
 
         return return_results
+
+    def entity_data(self, entity_id, claims=True):
+        entity_response = requests.get(f"{self.entity_data_root}{entity_id}.json").json()
+        entity_doc = entity_response["entities"][entity_id]
+        entity_record = dict()
+        for k, v in entity_doc.items():
+            if isinstance(v, str):
+                entity_record[k] = v
+
+        try:
+            entity_record["label_en"] = entity_doc["labels"]["en"]["value"]
+        except:
+            pass
+
+        try:
+            entity_record["description_en"] = entity_doc["descriptions"]["en"]["value"]
+        except:
+            pass
+
+        try:
+            entity_record["aliases_en"] = [i["value"] for i in entity_doc["aliases"]["en"]]
+        except:
+            pass
+
+        entity_claims = None
+
+        if claims and "claims" in entity_doc.keys():
+            entity_claims = list()
+            for item in entity_doc["claims"].items():
+                mainsnak = item[1][0]["mainsnak"]
+                property_id = mainsnak["property"]
+                if mainsnak["datavalue"]["type"] == "string":
+                     property_value = mainsnak["datavalue"]["value"]
+                elif mainsnak["datavalue"]["type"] == "wikibase-entityid":
+                    property_value = mainsnak["datavalue"]["value"]["id"]
+                elif mainsnak["datavalue"]["type"] == "time":
+                    property_value = mainsnak["datavalue"]["value"]["time"]
+                else:
+                    property_value = json.dumps(mainsnak["datavalue"]["value"])
+
+                entity_claims.append({
+                    "entity_id": entity_id,
+                    "property_id": property_id,
+                    "property_value": property_value
+                })
+
+        return entity_record, entity_claims
 
 
 class UsgsWeb:
@@ -995,3 +1048,194 @@ class Pw:
             links = None
 
         return summarized_record, record_sentences, cost_centers, authors, affiliations, links
+
+
+class Isaid:
+    def __init__(self):
+        self.description = "Set of functions for working with iSAID - the integrated Science Assessment Information" \
+                           "Database."
+        self.isaid_api = input("Provide the URL to a GraphQL end point for iSAID")
+        self.api_headers = {
+            "content-type": "application/json",
+            "x-hasura-admin-secret": getpass("Input API secret")
+        }
+
+    def execute_query(self, query):
+        return requests.post(
+            self.isaid_api,
+            json={"query": query},
+            headers=self.headers
+        )
+
+    def lookup_person(self, identifier):
+        q_sb = '''
+          {
+            sb_usgs_employees(where: {email: {_eq: "%s"}}) {
+              displayName
+              identifier_ORCID
+              identifier_WikiData
+              email
+              date_cached
+              city
+              state
+              uri
+              url
+              organization_name
+              jobTitle
+            }
+          }
+        ''' % (identifier)
+        r_api = self.execute_query(q_sb)
+
+        if r_api.status_code == 200:
+            if len(r_api.json()["data"]["sb_usgs_employees"]) != 1:
+                return None
+            else:
+                return r_api.json()["data"]["sb_usgs_employees"][0]
+
+        return assembled_record
+
+    def lookup_expertise(self, email):
+        q_expertise = '''
+          {
+            identified_expertise(where: {email: {_eq: "%s"}}) 
+            {
+              term
+            }
+          }
+        ''' % (email)
+        r_api = self.execute_query(q_expertise)
+
+        if r_api.status_code == 200:
+            if len(r_api.json()["data"]["identified_expertise"]) == 0:
+                return None
+            else:
+                return r_api.json()["data"]["identified_expertise"]
+
+    def lookup_pubs(self, email=None, orcid=None):
+        if email is not None and orcid is None:
+            where = '{email: {_eq: "%s"}}' % (email)
+        elif email is None and orcid is not None:
+            where = '{identifier_ORCID: {_eq: "%s"}}' % (orcid)
+        elif email is not None and orcid is not None:
+            where = '{_or: {email: {_eq: "%s"}, identifier_ORCID: {_eq: "%s"}}}' % (email, orcid)
+        else:
+            return None
+
+        q_pubs = '''
+          {
+            identified_pw_authors(where: %s) 
+            {
+              title
+              uri
+              publicationYear
+            }
+          }
+        ''' % (where)
+        r_api = self.execute_query(q_pubs)
+
+        if r_api.status_code == 200:
+            if len(r_api.json()["data"]["identified_pw_authors"]) == 0:
+                return None
+            else:
+                return r_api.json()["data"]["identified_pw_authors"]
+
+    def lookup_co_authors(self, pub_list, email=None, orcid=None):
+        q_co_authors = '''
+          {
+            identified_pw_authors(where: {uri: {_in: %s}}) {
+              contributorId
+              email
+              family
+              given
+              identifier_ORCID
+              sb_uri
+              usgs
+            }
+          }
+        ''' % (str(pub_list).replace("'", '"'))
+        r_api = self.execute_query(q_co_authors)
+
+        if r_api.status_code == 200:
+            if len(r_api.json()["data"]["identified_pw_authors"]) == 0:
+                return None
+            else:
+                co_author_list = r_api.json()["data"]["identified_pw_authors"]
+                if email is not None:
+                    co_author_list = [
+                        i for i in co_author_list if i["email"] != email
+                    ]
+                if orcid is not None:
+                    co_author_list = [
+                        i for i in co_author_list if i["identifier_ORCID"] != email
+                    ]
+
+                co_authors_with_count = list()
+                for contributorId, count in dict(Counter(i["contributorId"] for i in co_author_list)).items():
+                    author_record = next((i for i in co_author_list if i["contributorId"] == contributorId), None)
+                    author_record["count"] = count
+                    co_authors_with_count.append(author_record)
+
+                return co_authors_with_count
+
+    def lookup_authoring_affiliations(self, pub_list):
+        q_affiliations = '''
+          {
+            pw_affiliations(where: {uri: {_in: %s}}) {
+              text
+              active
+              usgs
+            }
+          }
+        ''' % (str(pub_list).replace("'", '"'))
+        r_api = self.execute_query(q_affiliations)
+
+        if r_api.status_code == 200:
+            if len(r_api.json()["data"]["pw_affiliations"]) == 0:
+                return None
+            else:
+                affiliation_list = r_api.json()["data"]["pw_affiliations"]
+
+                affiliations_with_count = list()
+                for affiliation, count in dict(Counter(i["text"] for i in affiliation_list)).items():
+                    affiliation_record = next((i for i in affiliation_list if i["text"] == affiliation), None)
+                    affiliation_record["count"] = count
+                    affiliations_with_count.append(affiliation_record)
+
+                return affiliations_with_count
+
+    def lookup_pub_cost_centers(self, pub_list):
+        q_cost_centers = '''
+          {
+            pw_cost_centers(where: {uri: {_in: %s}}) {
+              text
+              usgs
+              publicationYear
+            }
+          }
+        ''' % (str(pub_list).replace("'", '"'))
+        r_api = self.execute_query(q_cost_centers)
+
+        if r_api.status_code == 200:
+            if len(r_api.json()["data"]["pw_cost_centers"]) == 0:
+                return None
+            else:
+                return r_api.json()["data"]["pw_cost_centers"]
+
+    def lookup_pub_entities(self, pub_list):
+        q_entities = '''
+          {
+            ner_pub_entities(where: {uri: {_in: %s}}) {
+              entity_type
+              entity_name
+              entity_count
+            }
+          }
+        ''' % (str(pub_list).replace("'", '"'))
+        r_api = self.execute_query(q_entities)
+
+        if r_api.status_code == 200:
+            if len(r_api.json()["data"]["ner_pub_entities"]) == 0:
+                return None
+            else:
+                return r_api.json()["data"]["ner_pub_entities"]
