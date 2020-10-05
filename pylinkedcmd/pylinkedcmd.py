@@ -1281,3 +1281,20 @@ class Isaid:
                 person_record["Named Entities in Publications"] = entities_from_pubs
 
         return person_record
+
+    def get_people(self):
+        q_people = '''
+            {
+              sb_usgs_employees {
+                email
+                displayName
+              }
+            }
+        '''
+        r_api = self.execute_query(q_people)
+
+        if r_api.status_code == 200:
+            if len(r_api.json()["data"]["sb_usgs_employees"]) == 0:
+                return None
+            else:
+                return r_api.json()["data"]["sb_usgs_employees"]
