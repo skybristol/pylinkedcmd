@@ -1240,3 +1240,44 @@ class Isaid:
                 return None
             else:
                 return r_api.json()["data"]["ner_pub_entities"]
+
+    def assemble_person_record(self, identifier):
+        person_info = self.lookup_person(identifier)
+
+        if person_info is None:
+            return None
+
+        person_record = {
+            "ScienceBase Directory": person_info
+        }
+
+        expertise_terms = self.lookup_expertise(person_info["email"])
+        if expertise_terms is not None:
+            person_record["Expertise Terms"] = expertise_terms
+
+        pubs_list = self.lookup_pubs(email=person_info["email"], orcid=person_info["identifier_ORCID"])
+        if pubs_list is not None:
+            person_record["Publications"] = pubs_list
+            pubs_uri_list = [i["uri"] for i in pubs_list]
+
+            associated_cost_centers = self.lookup_pub_cost_centers(pubs_uri_list)
+            if associated_cost_centers is not None:
+                person_record["Associated Cost Centers"] = associated_cost_centers
+
+            associated_co_authors = self.lookup_co_authors(
+                pubs_uri_list,
+                email=person_info["email"],
+                orcid=person_info["identifier_ORCID"]
+            )
+            if associated_co_authors is not None:
+                person_record["Associated Coauthors"] = associated_co_authors
+
+            authoring_affiliations = self.lookup_authoring_affiliations(pubs_uri_list)
+            if authoring_affiliations is not None:
+                person_record["Authoring Affiliations"] = authoring_affiliations
+
+            entities_from_pubs = self.lookup_pub_entities(pubs_uri_list)
+            if entities_from_pubs is not None:
+                person_record["Named Entities in Publications"] = entities_from_pubs
+
+        return person_record
