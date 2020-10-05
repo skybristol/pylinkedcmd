@@ -1064,7 +1064,7 @@ class Isaid:
         return requests.post(
             self.isaid_api,
             json={"query": query},
-            headers=self.headers
+            headers=self.api_headers
         )
 
     def lookup_person(self, identifier):
