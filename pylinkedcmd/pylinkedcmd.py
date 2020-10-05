@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import math
 from nltk.tokenize import sent_tokenize
+from collections import Counter
 
 
 class Sciencebase:
