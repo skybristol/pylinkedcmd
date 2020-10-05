@@ -1241,6 +1241,51 @@ class Isaid:
             else:
                 return r_api.json()["data"]["ner_pub_entities"]
 
+    def lookup_wikidata_entity(self, qid):
+        q_wd_entity = '''
+            {
+              wikidata_entities(where: {id: {_eq: "%s"}}) {
+                id
+                label_en
+                modified
+                title
+                type
+                description_en
+                aliases_en
+              }
+            }
+        ''' % (qid)
+        r_api = self.execute_query(q_wd_entity)
+
+        if r_api.status_code == 200:
+            if len(r_api.json()["data"]["wikidata_entities"]) > 1:
+                return None
+            else:
+                return r_api.json()["data"]["wikidata_entities"][0]
+
+    def lookup_wikidata_claims(self, qid):
+        q_wd_claims = '''
+            {
+              identified_wikidata_claims(where: {entity_id: {_eq: "%s"}}) {
+                label_en
+                description_en
+                property_id
+                property_value
+                ref_entity_description
+                ref_entity_label
+                entity_id
+                datatype
+              }
+            }
+        ''' % (qid)
+        r_api = self.execute_query(q_wd_claims)
+
+        if r_api.status_code == 200:
+            if len(r_api.json()["data"]["identified_wikidata_claims"]) == 0:
+                return None
+            else:
+                return r_api.json()["data"]["identified_wikidata_claims"]
+
     def assemble_person_record(self, identifier):
         person_info = self.lookup_person(identifier)
 
@@ -1279,6 +1324,14 @@ class Isaid:
             entities_from_pubs = self.lookup_pub_entities(pubs_uri_list)
             if entities_from_pubs is not None:
                 person_record["Named Entities in Publications"] = entities_from_pubs
+
+        if person_info["identifier_WikiData"] is not None:
+            wikidata_entity = self.lookup_wikidata_entity(person_info["identifier_WikiData"])
+            if wikidata_entity is not None:
+                person_record["WikiData Entity"] = wikidata_entity
+            wikidata_claims = self.lookup_wikidata_claims(person_info["identifier_WikiData"])
+            if wikidata_claims is not None:
+                person_record["WikiData Statements"] = wikidata_claims
 
         return person_record
 
