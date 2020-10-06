@@ -1087,17 +1087,29 @@ class Isaid:
         q_sb = '''
           {
             sb_usgs_employees(where: {%s: {_eq: "%s"}}) {
-              displayName
-              identifier_ORCID
-              identifier_WikiData
-              email
-              date_cached
-              city
-              state
-              uri
-              url
-              organization_name
-              jobTitle
+                url
+                uri
+                state
+                professionalQualifier
+                personalTitle
+                organization_uri
+                organization_name
+                orcId
+                note
+                middleName
+                lastName
+                jobTitle
+                index
+                identifier_WikiData
+                identifier_ORCID
+                generationalQualifier
+                firstName
+                email
+                displayName
+                description
+                date_cached
+                city
+                cellPhone
             }
           }
         ''' % (parameter, identifier)
@@ -1399,15 +1411,20 @@ class Isaid:
         else:
             return None
 
-    def assemble_person_record(self, identifier, parameter="email"):
+    def assemble_person_record(self, identifier=None, parameter="email", person_doc=None):
         '''
         Assembles a full logical document for a given person with all available information in the iSAID cache
         :param identifier: Identifier value to uniquely identify individual person
         :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
+        :param person_doc: A person document from the ScienceBase Directory cache may already be provided through
+        another process and can be used for assembly, bypassing the need to lookup a person from an identifier
         identifier_WikiData, or uri (ScienceBase Directory)
         :return: JSON object/dictionary containing logical sections of information for a given person
         '''
-        person_info = self.lookup_person(identifier)
+        if person_doc is not None:
+            person_info = person_doc
+        else:
+            person_info = self.lookup_person(identifier, parameter=parameter)
 
         if person_info is None:
             return None
@@ -1455,14 +1472,19 @@ class Isaid:
 
         return person_record
 
-    def get_people(self):
+    def get_people(self, email_list=None):
         '''
         Queries the ScienceBase Directory cache in the iSAID database for a set of records
+        :param email_list: List of email addresses to use in constraining search
         :return: List of dictionaries containing person records.
         '''
+        where_clause = ""
+        if email_list is not None:
+            where_clause = "(where: {email: {_in: %s}})" % (str(email_list).replace("'", '"'))
+
         q_people = '''
             {
-              sb_usgs_employees {
+              sb_usgs_employees %s {
                 url
                 uri
                 state
@@ -1488,7 +1510,7 @@ class Isaid:
                 cellPhone
               }
             }
-        '''
+        ''' % (where_clause)
         r_api = self.execute_query(q_people)
 
         if r_api.status_code == 200:
