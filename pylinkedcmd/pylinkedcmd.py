@@ -1145,14 +1145,12 @@ class Isaid:
         a given author. At this time, this will only return publications where the PW records have been properly
         cataloged with identifiers on authors (either email or ORCID). We need to verify how extensive this cataloging
         is on the Pubs Warehouse side and probably include either functionality for additional processing into the
-        cache or else a more sophisticated lookup mechanism. The function will also return a list containing just the
-        publication URIs and a list of dictionaries containing the co-authors with counts of occurrences.
+        cache or else a more sophisticated lookup mechanism.
         :param identifier: Identifier value to uniquely identify individual author
         :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
         identifier_WikiData, or uri (ScienceBase Directory)
         :return: GraphQL result (JSON array of objects/list of dictionaries) containing the uri, title, and year of
-        publication from the PW cache, a list of the pub URIs, and a list of the co-authors
-        (returns None if no results found or API query fails)
+        publication from the PW cache (returns None if no results found or API query fails)
         '''
         q_pubs = '''
           {
@@ -1161,13 +1159,6 @@ class Isaid:
               title
               uri
               publicationYear
-              contributorId
-              email
-              family
-              given
-              identifier_ORCID
-              sb_uri
-              usgs
             }
           }
         ''' % (parameter, identifier)
@@ -1177,43 +1168,37 @@ class Isaid:
             if len(r_api.json()["data"]["identified_pw_authors"]) == 0:
                 return None
             else:
-                results = r_api.json()["data"]["identified_pw_authors"]
-                pub_list = [
-                    {
-                        k: v for k, v in i.items()
-                        if k not in {"contributorId", "email", "family", "given", "identifier_ORCID", "sb_uri", "usgs"}
-                    } for i in results
-                ]
-                pub_uri_list = [i["uri"] for i in pub_list]
-                co_author_list = [
-                    {
-                        k: v for k, v in i.items()
-                        if k not in {"title", "uri", "publicationYear"}
-                    } for i in results if i[parameter] != identifier
-                ]
-                co_authors_with_count = list()
-                for contributorId, count in dict(Counter(i["contributorId"] for i in co_author_list)).items():
-                    author_record = next((i for i in co_author_list if i["contributorId"] == contributorId), None)
-                    author_record["count"] = count
-                    co_authors_with_count.append(author_record)
-
-                return pub_list, pub_uri_list, co_authors_with_count
+                return r_api.json()["data"]["identified_pw_authors"]
 
         else:
             return None
 
-    def lookup_co_authors(self, pub_list, email=None, orcid=None):
+    def lookup_co_authors(self, pub_list, identifier, parameter="email"):
         '''
-        Given a list of publications,
-        :param publist: List of publication URL URIs
-        :param email: Email address to be used in removing the subject author from a list of co-authors
-        :param orcid: ORCID identifier to be used in removing the subject author from a list of co-authors
-        :return: GraphQL result (JSON array of objects/list of dictionaries) containing the uri, title, and year of
-        publication from the PW cache (returns None if no results found or API query fails)
+        Given a list of publication URIs, returns the list of co-authors from all publications. Uses an identifier for
+        the subject author to filter.
+        :param pub_list: List of publication URL URIs
+        :param identifier: Identifier value to uniquely identify individual author
+        :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
+        identifier_WikiData, or uri (ScienceBase Directory)
+        :return: GraphQL result (JSON array of objects/list of dictionaries) containing information about coauthors,
+        including their identifiers and an indication of whether or not they are USGS employees
         '''
         q_co_authors = '''
           {
-            identified_pw_authors(where: {uri: {_in: %s}}) {
+            identified_pw_authors(
+                where: {
+                    _and: {
+                        uri: {
+                            _in: %s
+                        },
+                        %s: {
+                            _neq: "%s"
+                        }
+                    }
+                }
+            ) 
+            {
               contributorId
               email
               family
@@ -1221,29 +1206,27 @@ class Isaid:
               identifier_ORCID
               sb_uri
               usgs
+              publicationYear
             }
           }
-        ''' % (str(pub_list).replace("'", '"'))
+        ''' % (str(pub_list).replace("'", '"'), parameter, identifier)
         r_api = self.execute_query(q_co_authors)
 
         if r_api.status_code == 200:
-            if len(r_api.json()["data"]["identified_pw_authors"]) == 0:
+            if "data" not in r_api.json().keys() or len(r_api.json()["data"]["identified_pw_authors"]) == 0:
                 return None
             else:
                 co_author_list = r_api.json()["data"]["identified_pw_authors"]
-                if email is not None:
-                    co_author_list = [
-                        i for i in co_author_list if i["email"] != email
-                    ]
-                if orcid is not None:
-                    co_author_list = [
-                        i for i in co_author_list if i["identifier_ORCID"] != email
-                    ]
 
                 co_authors_with_count = list()
                 for contributorId, count in dict(Counter(i["contributorId"] for i in co_author_list)).items():
-                    author_record = next((i for i in co_author_list if i["contributorId"] == contributorId), None)
+                    author_records = [i for i in co_author_list if i["contributorId"] == contributorId]
+                    pub_years = [int(i["publicationYear"]) for i in author_records]
+                    author_record = author_records[0]
                     author_record["count"] = count
+                    author_record["start_year"] = min(pub_years)
+                    author_record["end_year"] = max(pub_years)
+                    del author_record["publicationYear"]
                     co_authors_with_count.append(author_record)
 
                 return co_authors_with_count
@@ -1251,12 +1234,19 @@ class Isaid:
             return None
 
     def lookup_authoring_affiliations(self, pub_list):
+        '''
+        Looks up the set of author affiliations for a given set of publications.
+        :param pub_list: List of publication URL URIs
+        :return: List of organization names, the count of occurrences as author affiliations, start and end years of
+        publications, along with flags on active and USGS
+        '''
         q_affiliations = '''
           {
             pw_affiliations(where: {uri: {_in: %s}}) {
               text
               active
               usgs
+              publicationYear
             }
           }
         ''' % (str(pub_list).replace("'", '"'))
@@ -1270,8 +1260,15 @@ class Isaid:
 
                 affiliations_with_count = list()
                 for affiliation, count in dict(Counter(i["text"] for i in affiliation_list)).items():
-                    affiliation_record = next((i for i in affiliation_list if i["text"] == affiliation), None)
-                    affiliation_record["count"] = count
+                    affiliation_records = [i for i in affiliation_list if i["text"] == affiliation]
+                    affiliation_record = {
+                        "organization_name": affiliation_records[0]["text"],
+                        "organization_active": affiliation_records[0]["active"],
+                        "usgs": affiliation_records[0]["usgs"],
+                        "count": count,
+                        "start_year": min([int(i["publicationYear"]) for i in affiliation_records]),
+                        "end_year": max([int(i["publicationYear"]) for i in affiliation_records])
+                    }
                     affiliations_with_count.append(affiliation_record)
 
                 return affiliations_with_count
@@ -1279,11 +1276,16 @@ class Isaid:
             return None
 
     def lookup_pub_cost_centers(self, pub_list):
+        '''
+        Looks up the set of cost centers associated with a list of publications.
+        :param pub_list: List of publication URL URIs
+        :return: List of USGS Cost Centers, the count of occurrences as in publications, start and end years of
+        publications
+        '''
         q_cost_centers = '''
           {
             pw_cost_centers(where: {uri: {_in: %s}}) {
               text
-              usgs
               publicationYear
             }
           }
@@ -1294,11 +1296,30 @@ class Isaid:
             if len(r_api.json()["data"]["pw_cost_centers"]) == 0:
                 return None
             else:
-                return r_api.json()["data"]["pw_cost_centers"]
+                cost_centers = r_api.json()["data"]["pw_cost_centers"]
+
+                cost_centers_with_count = list()
+                for cost_center, count in dict(Counter(i["text"] for i in cost_centers)).items():
+                    cost_center_records = [i for i in cost_centers if i["text"] == cost_center]
+                    cost_center_record = {
+                        "cost_center_name": cost_center_records[0]["text"],
+                        "count": count,
+                        "start_year": min([int(i["publicationYear"]) for i in cost_center_records]),
+                        "end_year": max([int(i["publicationYear"]) for i in cost_center_records])
+                    }
+                    cost_centers_with_count.append(cost_center_record)
+
+                return cost_centers_with_count
         else:
             return None
 
     def lookup_pub_entities(self, pub_list):
+        '''
+        Looks up available pre-cached named entities from a previously run NER process on publication titles and
+        abstracts.
+        :param pub_list: List of publication URL URIs
+        :return: List of dictionaries/objects with name, type, and count on NER entities identified
+        '''
         q_entities = '''
           {
             ner_pub_entities(where: {uri: {_in: %s}}) {
@@ -1319,6 +1340,11 @@ class Isaid:
             return None
 
     def lookup_wikidata_entity(self, qid):
+        '''
+        Looks up a cached WikiData entity record based on QID identifier
+        :param qid: QID identifier for WikiData entity
+        :return: Returns basic information on an entity as simple, properties/values
+        '''
         q_wd_entity = '''
             {
               wikidata_entities(where: {id: {_eq: "%s"}}) {
@@ -1343,6 +1369,12 @@ class Isaid:
             return None
 
     def lookup_wikidata_claims(self, qid):
+        '''
+        Looks up the set of statements/claims made about a given WikiData entity
+        :param qid: QID identifier for WikiData entity
+        :return: Returns assembled data for WikiData claims that includes both string and date values along with
+        information from links to other WikiData entities assembled in the iSAID cache
+        '''
         q_wd_claims = '''
             {
               identified_wikidata_claims(where: {entity_id: {_eq: "%s"}}) {
@@ -1367,7 +1399,14 @@ class Isaid:
         else:
             return None
 
-    def assemble_person_record(self, identifier):
+    def assemble_person_record(self, identifier, parameter="email"):
+        '''
+        Assembles a full logical document for a given person with all available information in the iSAID cache
+        :param identifier: Identifier value to uniquely identify individual person
+        :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
+        identifier_WikiData, or uri (ScienceBase Directory)
+        :return: JSON object/dictionary containing logical sections of information for a given person
+        '''
         person_info = self.lookup_person(identifier)
 
         if person_info is None:
@@ -1381,7 +1420,7 @@ class Isaid:
         if expertise_terms is not None:
             person_record["Expertise Terms"] = expertise_terms
 
-        pubs_list = self.lookup_pubs(email=person_info["email"], orcid=person_info["identifier_ORCID"])
+        pubs_list = self.lookup_pubs(person_info["email"], parameter=parameter)
         if pubs_list is not None:
             person_record["Publications"] = pubs_list
             pubs_uri_list = [i["uri"] for i in pubs_list]
@@ -1392,8 +1431,8 @@ class Isaid:
 
             associated_co_authors = self.lookup_co_authors(
                 pubs_uri_list,
-                email=person_info["email"],
-                orcid=person_info["identifier_ORCID"]
+                person_info["email"],
+                parameter=parameter
             )
             if associated_co_authors is not None:
                 person_record["Associated Coauthors"] = associated_co_authors
@@ -1417,11 +1456,36 @@ class Isaid:
         return person_record
 
     def get_people(self):
+        '''
+        Queries the ScienceBase Directory cache in the iSAID database for a set of records
+        :return: List of dictionaries containing person records.
+        '''
         q_people = '''
             {
               sb_usgs_employees {
+                url
+                uri
+                state
+                professionalQualifier
+                personalTitle
+                organization_uri
+                organization_name
+                orcId
+                note
+                middleName
+                lastName
+                jobTitle
+                index
+                identifier_WikiData
+                identifier_ORCID
+                generationalQualifier
+                firstName
                 email
                 displayName
+                description
+                date_cached
+                city
+                cellPhone
               }
             }
         '''
