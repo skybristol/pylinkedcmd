@@ -1062,16 +1062,31 @@ class Isaid:
         }
 
     def execute_query(self, query):
+        '''
+        Executed query against GraphQL end point
+        :param query: GraphQL formatted query statement
+        :return: GraphQL response
+        '''
         return requests.post(
             self.isaid_api,
             json={"query": query},
             headers=self.api_headers
         )
 
-    def lookup_person(self, identifier):
+    def lookup_person(self, identifier, parameter="email"):
+        '''
+        The intent is to cache one and only one record for a given person in the iSAID database that is uniquely
+        and persistently identified by several different identifier schemes. This function takes one of those
+        identifiers (defaulting to email as the most common inbound search vector at this time) and returns a match.
+        :param identifier: Identifier value to uniquely identify individual person
+        :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
+        identifier_WikiData, or uri (ScienceBase Directory)
+        :return: GraphQL result (JSON object/dictionary) containing the primary identifying attributes from the
+        ScienceBase Directory cached in the iSAID database (returns None if no results found or API query fails)
+        '''
         q_sb = '''
           {
-            sb_usgs_employees(where: {email: {_eq: "%s"}}) {
+            sb_usgs_employees(where: {%s: {_eq: "%s"}}) {
               displayName
               identifier_ORCID
               identifier_WikiData
@@ -1085,7 +1100,7 @@ class Isaid:
               jobTitle
             }
           }
-        ''' % (identifier)
+        ''' % (parameter, identifier)
         r_api = self.execute_query(q_sb)
 
         if r_api.status_code == 200:
@@ -1093,18 +1108,27 @@ class Isaid:
                 return None
             else:
                 return r_api.json()["data"]["sb_usgs_employees"][0]
+        else:
+            return None
 
-        return assembled_record
-
-    def lookup_expertise(self, email):
+    def lookup_expertise(self, identifier, parameter="email"):
+        '''
+        Looks up and returns expertise terms from USGS profile pages scraped and cached in the iSAID database
+        :param identifier: Identifier value to uniquely identify individual person
+        :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
+        identifier_WikiData, or uri (ScienceBase Directory); may also use source_identifier with the URL for the
+        Profile Page, but this can vary in format depending on how it was populated into the ScienceBase Directory
+        :return: GraphQL result (JSON array of objects/list of dictionaries) containing the expertise terms cached
+        from the USGS profile page (returns None if no results found or API query fails)
+        '''
         q_expertise = '''
           {
-            identified_expertise(where: {email: {_eq: "%s"}}) 
+            identified_expertise(where: {%s: {_eq: "%s"}}) 
             {
               term
             }
           }
-        ''' % (email)
+        ''' % (parameter, identifier)
         r_api = self.execute_query(q_expertise)
 
         if r_api.status_code == 200:
@@ -1112,36 +1136,81 @@ class Isaid:
                 return None
             else:
                 return r_api.json()["data"]["identified_expertise"]
-
-    def lookup_pubs(self, email=None, orcid=None):
-        if email is not None and orcid is None:
-            where = '{email: {_eq: "%s"}}' % (email)
-        elif email is None and orcid is not None:
-            where = '{identifier_ORCID: {_eq: "%s"}}' % (orcid)
-        elif email is not None and orcid is not None:
-            where = '{_or: {email: {_eq: "%s"}, identifier_ORCID: {_eq: "%s"}}}' % (email, orcid)
         else:
             return None
 
+    def lookup_pubs(self, identifier, parameter="email"):
+        '''
+        Looks up and returns publication records from the USGS Publications Warehouse cached in the iSAID database for
+        a given author. At this time, this will only return publications where the PW records have been properly
+        cataloged with identifiers on authors (either email or ORCID). We need to verify how extensive this cataloging
+        is on the Pubs Warehouse side and probably include either functionality for additional processing into the
+        cache or else a more sophisticated lookup mechanism. The function will also return a list containing just the
+        publication URIs and a list of dictionaries containing the co-authors with counts of occurrences.
+        :param identifier: Identifier value to uniquely identify individual author
+        :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
+        identifier_WikiData, or uri (ScienceBase Directory)
+        :return: GraphQL result (JSON array of objects/list of dictionaries) containing the uri, title, and year of
+        publication from the PW cache, a list of the pub URIs, and a list of the co-authors
+        (returns None if no results found or API query fails)
+        '''
         q_pubs = '''
           {
-            identified_pw_authors(where: %s) 
+            identified_pw_authors(where: {%s: {_eq: "%s"}})
             {
               title
               uri
               publicationYear
+              contributorId
+              email
+              family
+              given
+              identifier_ORCID
+              sb_uri
+              usgs
             }
           }
-        ''' % (where)
+        ''' % (parameter, identifier)
         r_api = self.execute_query(q_pubs)
 
         if r_api.status_code == 200:
             if len(r_api.json()["data"]["identified_pw_authors"]) == 0:
                 return None
             else:
-                return r_api.json()["data"]["identified_pw_authors"]
+                results = r_api.json()["data"]["identified_pw_authors"]
+                pub_list = [
+                    {
+                        k: v for k, v in i.items()
+                        if k not in {"contributorId", "email", "family", "given", "identifier_ORCID", "sb_uri", "usgs"}
+                    } for i in results
+                ]
+                pub_uri_list = [i["uri"] for i in pub_list]
+                co_author_list = [
+                    {
+                        k: v for k, v in i.items()
+                        if k not in {"title", "uri", "publicationYear"}
+                    } for i in results if i[parameter] != identifier
+                ]
+                co_authors_with_count = list()
+                for contributorId, count in dict(Counter(i["contributorId"] for i in co_author_list)).items():
+                    author_record = next((i for i in co_author_list if i["contributorId"] == contributorId), None)
+                    author_record["count"] = count
+                    co_authors_with_count.append(author_record)
+
+                return pub_list, pub_uri_list, co_authors_with_count
+
+        else:
+            return None
 
     def lookup_co_authors(self, pub_list, email=None, orcid=None):
+        '''
+        Given a list of publications,
+        :param publist: List of publication URL URIs
+        :param email: Email address to be used in removing the subject author from a list of co-authors
+        :param orcid: ORCID identifier to be used in removing the subject author from a list of co-authors
+        :return: GraphQL result (JSON array of objects/list of dictionaries) containing the uri, title, and year of
+        publication from the PW cache (returns None if no results found or API query fails)
+        '''
         q_co_authors = '''
           {
             identified_pw_authors(where: {uri: {_in: %s}}) {
@@ -1178,6 +1247,8 @@ class Isaid:
                     co_authors_with_count.append(author_record)
 
                 return co_authors_with_count
+        else:
+            return None
 
     def lookup_authoring_affiliations(self, pub_list):
         q_affiliations = '''
@@ -1204,6 +1275,8 @@ class Isaid:
                     affiliations_with_count.append(affiliation_record)
 
                 return affiliations_with_count
+        else:
+            return None
 
     def lookup_pub_cost_centers(self, pub_list):
         q_cost_centers = '''
@@ -1222,6 +1295,8 @@ class Isaid:
                 return None
             else:
                 return r_api.json()["data"]["pw_cost_centers"]
+        else:
+            return None
 
     def lookup_pub_entities(self, pub_list):
         q_entities = '''
@@ -1240,6 +1315,8 @@ class Isaid:
                 return None
             else:
                 return r_api.json()["data"]["ner_pub_entities"]
+        else:
+            return None
 
     def lookup_wikidata_entity(self, qid):
         q_wd_entity = '''
@@ -1262,6 +1339,8 @@ class Isaid:
                 return None
             else:
                 return r_api.json()["data"]["wikidata_entities"][0]
+        else:
+            return None
 
     def lookup_wikidata_claims(self, qid):
         q_wd_claims = '''
@@ -1285,6 +1364,8 @@ class Isaid:
                 return None
             else:
                 return r_api.json()["data"]["identified_wikidata_claims"]
+        else:
+            return None
 
     def assemble_person_record(self, identifier):
         person_info = self.lookup_person(identifier)
@@ -1351,3 +1432,5 @@ class Isaid:
                 return None
             else:
                 return r_api.json()["data"]["sb_usgs_employees"]
+        else:
+            return None
