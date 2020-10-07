@@ -1502,7 +1502,7 @@ class Isaid:
     def assemble_person_record(self, criteria=None, parameter="email", person_doc=None):
         '''
         Assembles a full logical document for a given person with all available information in the iSAID cache
-        :param identifier: Identifier value to uniquely identify individual person
+        :param criteria: Identifier value to uniquely identify individual person
         :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
         :param person_doc: A person document from the ScienceBase Directory cache may already be provided through
         another process and can be used for assembly, bypassing the need to lookup a person from an identifier
@@ -1512,15 +1512,8 @@ class Isaid:
         if person_doc is not None:
             person_info = person_doc
         else:
-            if criteria is None:
-                raise ValueError("If you don't supply an existing person_doc, you need to supply search criteria.")
             person_response = self.get_people(criteria=criteria, parameter=parameter)
-            if not isinstance(person_info, list):
-                raise ValueError(f"Something went wrong in the search for a person to assemble: {person_info}")
             person_info = person_response[0]
-
-        if not isinstance(person_info, dict):
-            raise ValueError(f"Something went wrong in the search for a person to assemble: {person_info}")
 
         person_record = {
             "ScienceBase Directory": person_info
