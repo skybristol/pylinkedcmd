@@ -1060,7 +1060,7 @@ class Isaid:
             "content-type": "application/json",
         }
 
-    def evaluate_criteria(self, criteria, parameter=None):
+    def evaluate_criteria_people(self, criteria, parameter=None):
         '''
         Builds where clause criteria for GraphQL queries for people. Will detect common search patterns for identifier-
         based searches but otherwise requires the parameter to be explicitly supplied.
@@ -1571,7 +1571,7 @@ class Isaid:
 
         if criteria is not None:
             try:
-                where_clause = self.evaluate_criteria(criteria, parameter)
+                where_clause = self.evaluate_criteria_people(criteria, parameter)
             except ValueError as e:
                 return e
 
