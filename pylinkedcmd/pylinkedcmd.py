@@ -1055,10 +1055,9 @@ class Isaid:
     def __init__(self):
         self.description = "Set of functions for working with iSAID - the integrated Science Assessment Information" \
                            "Database."
-        self.isaid_api = input("Provide the URL to a GraphQL end point for iSAID")
+        self.isaid_api = "https://fast-iguana-60.hasura.app/v1/graphql"
         self.api_headers = {
             "content-type": "application/json",
-            "x-hasura-admin-secret": getpass("Input API secret")
         }
 
     def execute_query(self, query):
@@ -1067,11 +1066,16 @@ class Isaid:
         :param query: GraphQL formatted query statement
         :return: GraphQL response
         '''
-        return requests.post(
+        r = requests.post(
             self.isaid_api,
             json={"query": query},
             headers=self.api_headers
         )
+
+        if r.status_code != 200:
+            raise ValueError("Query could not be processed.")
+
+        return r.json()
 
     def lookup_person(self, identifier, parameter="email"):
         '''
@@ -1094,12 +1098,10 @@ class Isaid:
                 personalTitle
                 organization_uri
                 organization_name
-                orcId
                 note
                 middleName
                 lastName
                 jobTitle
-                index
                 identifier_WikiData
                 identifier_ORCID
                 generationalQualifier
@@ -1113,15 +1115,18 @@ class Isaid:
             }
           }
         ''' % (parameter, identifier)
-        r_api = self.execute_query(q_sb)
+        try:
+            query_response = self.execute_query(q_sb)
+        except ValueError as e:
+            return e
 
-        if r_api.status_code == 200:
-            if len(r_api.json()["data"]["sb_usgs_employees"]) != 1:
-                return None
-            else:
-                return r_api.json()["data"]["sb_usgs_employees"][0]
+        if "errors" in query_response.keys():
+            return query_response
         else:
-            return None
+            if len(query_response["data"]["sb_usgs_employees"]) > 1:
+                return "Query returned more than one record, and only one record was expected."
+
+            return query_response["data"]["sb_usgs_employees"][0]
 
     def lookup_expertise(self, identifier, parameter="email"):
         '''
@@ -1141,15 +1146,15 @@ class Isaid:
             }
           }
         ''' % (parameter, identifier)
-        r_api = self.execute_query(q_expertise)
+        try:
+            query_response = self.execute_query(q_expertise)
+        except ValueError as e:
+            return e
 
-        if r_api.status_code == 200:
-            if len(r_api.json()["data"]["identified_expertise"]) == 0:
-                return None
-            else:
-                return r_api.json()["data"]["identified_expertise"]
+        if "errors" in query_response.keys():
+            return query_response
         else:
-            return None
+            return query_response["data"]["identified_expertise"]
 
     def lookup_pubs(self, identifier, parameter="email"):
         '''
@@ -1174,16 +1179,15 @@ class Isaid:
             }
           }
         ''' % (parameter, identifier)
-        r_api = self.execute_query(q_pubs)
+        try:
+            query_response = self.execute_query(q_pubs)
+        except ValueError as e:
+            return e
 
-        if r_api.status_code == 200:
-            if len(r_api.json()["data"]["identified_pw_authors"]) == 0:
-                return None
-            else:
-                return r_api.json()["data"]["identified_pw_authors"]
-
+        if "errors" in query_response.keys():
+            return query_response
         else:
-            return None
+            return query_response["data"]["identified_pw_authors"]
 
     def lookup_co_authors(self, pub_list, identifier, parameter="email"):
         '''
@@ -1222,28 +1226,28 @@ class Isaid:
             }
           }
         ''' % (str(pub_list).replace("'", '"'), parameter, identifier)
-        r_api = self.execute_query(q_co_authors)
+        try:
+            query_response = self.execute_query(q_co_authors)
+        except ValueError as e:
+            return e
 
-        if r_api.status_code == 200:
-            if "data" not in r_api.json().keys() or len(r_api.json()["data"]["identified_pw_authors"]) == 0:
-                return None
-            else:
-                co_author_list = r_api.json()["data"]["identified_pw_authors"]
-
-                co_authors_with_count = list()
-                for contributorId, count in dict(Counter(i["contributorId"] for i in co_author_list)).items():
-                    author_records = [i for i in co_author_list if i["contributorId"] == contributorId]
-                    pub_years = [int(i["publicationYear"]) for i in author_records]
-                    author_record = author_records[0]
-                    author_record["count"] = count
-                    author_record["start_year"] = min(pub_years)
-                    author_record["end_year"] = max(pub_years)
-                    del author_record["publicationYear"]
-                    co_authors_with_count.append(author_record)
-
-                return co_authors_with_count
+        if "errors" in query_response.keys():
+            return query_response
         else:
-            return None
+            co_author_list = query_response["data"]["identified_pw_authors"]
+
+            co_authors_with_count = list()
+            for contributorId, count in dict(Counter(i["contributorId"] for i in co_author_list)).items():
+                author_records = [i for i in co_author_list if i["contributorId"] == contributorId]
+                pub_years = [int(i["publicationYear"]) for i in author_records]
+                author_record = author_records[0]
+                author_record["count"] = count
+                author_record["start_year"] = min(pub_years)
+                author_record["end_year"] = max(pub_years)
+                del author_record["publicationYear"]
+                co_authors_with_count.append(author_record)
+
+            return co_authors_with_count
 
     def lookup_authoring_affiliations(self, pub_list):
         '''
@@ -1262,30 +1266,30 @@ class Isaid:
             }
           }
         ''' % (str(pub_list).replace("'", '"'))
-        r_api = self.execute_query(q_affiliations)
+        try:
+            query_response = self.execute_query(q_affiliations)
+        except ValueError as e:
+            return e
 
-        if r_api.status_code == 200:
-            if len(r_api.json()["data"]["pw_affiliations"]) == 0:
-                return None
-            else:
-                affiliation_list = r_api.json()["data"]["pw_affiliations"]
-
-                affiliations_with_count = list()
-                for affiliation, count in dict(Counter(i["text"] for i in affiliation_list)).items():
-                    affiliation_records = [i for i in affiliation_list if i["text"] == affiliation]
-                    affiliation_record = {
-                        "organization_name": affiliation_records[0]["text"],
-                        "organization_active": affiliation_records[0]["active"],
-                        "usgs": affiliation_records[0]["usgs"],
-                        "count": count,
-                        "start_year": min([int(i["publicationYear"]) for i in affiliation_records]),
-                        "end_year": max([int(i["publicationYear"]) for i in affiliation_records])
-                    }
-                    affiliations_with_count.append(affiliation_record)
-
-                return affiliations_with_count
+        if "errors" in query_response.keys():
+            return query_response
         else:
-            return None
+            affiliation_list = query_response["data"]["pw_affiliations"]
+
+            affiliations_with_count = list()
+            for affiliation, count in dict(Counter(i["text"] for i in affiliation_list)).items():
+                affiliation_records = [i for i in affiliation_list if i["text"] == affiliation]
+                affiliation_record = {
+                    "organization_name": affiliation_records[0]["text"],
+                    "organization_active": affiliation_records[0]["active"],
+                    "usgs": affiliation_records[0]["usgs"],
+                    "count": count,
+                    "start_year": min([int(i["publicationYear"]) for i in affiliation_records]),
+                    "end_year": max([int(i["publicationYear"]) for i in affiliation_records])
+                }
+                affiliations_with_count.append(affiliation_record)
+
+            return affiliations_with_count
 
     def lookup_pub_cost_centers(self, pub_list):
         '''
@@ -1302,28 +1306,28 @@ class Isaid:
             }
           }
         ''' % (str(pub_list).replace("'", '"'))
-        r_api = self.execute_query(q_cost_centers)
+        try:
+            query_response = self.execute_query(q_cost_centers)
+        except ValueError as e:
+            return e
 
-        if r_api.status_code == 200:
-            if len(r_api.json()["data"]["pw_cost_centers"]) == 0:
-                return None
-            else:
-                cost_centers = r_api.json()["data"]["pw_cost_centers"]
-
-                cost_centers_with_count = list()
-                for cost_center, count in dict(Counter(i["text"] for i in cost_centers)).items():
-                    cost_center_records = [i for i in cost_centers if i["text"] == cost_center]
-                    cost_center_record = {
-                        "cost_center_name": cost_center_records[0]["text"],
-                        "count": count,
-                        "start_year": min([int(i["publicationYear"]) for i in cost_center_records]),
-                        "end_year": max([int(i["publicationYear"]) for i in cost_center_records])
-                    }
-                    cost_centers_with_count.append(cost_center_record)
-
-                return cost_centers_with_count
+        if "errors" in query_response.keys():
+            return query_response
         else:
-            return None
+            cost_centers = query_response["data"]["pw_cost_centers"]
+
+            cost_centers_with_count = list()
+            for cost_center, count in dict(Counter(i["text"] for i in cost_centers)).items():
+                cost_center_records = [i for i in cost_centers if i["text"] == cost_center]
+                cost_center_record = {
+                    "cost_center_name": cost_center_records[0]["text"],
+                    "count": count,
+                    "start_year": min([int(i["publicationYear"]) for i in cost_center_records]),
+                    "end_year": max([int(i["publicationYear"]) for i in cost_center_records])
+                }
+                cost_centers_with_count.append(cost_center_record)
+
+            return cost_centers_with_count
 
     def lookup_pub_entities(self, pub_list):
         '''
@@ -1341,15 +1345,15 @@ class Isaid:
             }
           }
         ''' % (str(pub_list).replace("'", '"'))
-        r_api = self.execute_query(q_entities)
+        try:
+            query_response = self.execute_query(q_entities)
+        except ValueError as e:
+            return e
 
-        if r_api.status_code == 200:
-            if len(r_api.json()["data"]["ner_pub_entities"]) == 0:
-                return None
-            else:
-                return r_api.json()["data"]["ner_pub_entities"]
+        if "errors" in query_response.keys():
+            return query_response
         else:
-            return None
+            return query_response["data"]["ner_pub_entities"]
 
     def lookup_wikidata_entity(self, qid):
         '''
@@ -1370,15 +1374,18 @@ class Isaid:
               }
             }
         ''' % (qid)
-        r_api = self.execute_query(q_wd_entity)
+        try:
+            query_response = self.execute_query(q_wd_entity)
+        except ValueError as e:
+            return e
 
-        if r_api.status_code == 200:
-            if len(r_api.json()["data"]["wikidata_entities"]) > 1:
-                return None
-            else:
-                return r_api.json()["data"]["wikidata_entities"][0]
+        if "errors" in query_response.keys():
+            return query_response
         else:
-            return None
+            if len(query_response["data"]["wikidata_entities"]) > 1:
+                return "Query returned more than one record, and only one record was expected."
+
+            return query_response["data"]["wikidata_entities"][0]
 
     def lookup_wikidata_claims(self, qid):
         '''
@@ -1401,15 +1408,15 @@ class Isaid:
               }
             }
         ''' % (qid)
-        r_api = self.execute_query(q_wd_claims)
+        try:
+            query_response = self.execute_query(q_wd_claims)
+        except ValueError as e:
+            return e
 
-        if r_api.status_code == 200:
-            if len(r_api.json()["data"]["identified_wikidata_claims"]) == 0:
-                return None
-            else:
-                return r_api.json()["data"]["identified_wikidata_claims"]
+        if "errors" in query_response.keys():
+            return query_response
         else:
-            return None
+            return query_response["data"]["identified_wikidata_claims"]
 
     def assemble_person_record(self, identifier=None, parameter="email", person_doc=None):
         '''
@@ -1426,7 +1433,7 @@ class Isaid:
         else:
             person_info = self.lookup_person(identifier, parameter=parameter)
 
-        if person_info is None:
+        if not isinstance(person_info, dict):
             return None
 
         person_record = {
@@ -1511,12 +1518,12 @@ class Isaid:
               }
             }
         ''' % (where_clause)
-        r_api = self.execute_query(q_people)
+        try:
+            query_response = self.execute_query(q_people)
+        except ValueError as e:
+            return e
 
-        if r_api.status_code == 200:
-            if len(r_api.json()["data"]["sb_usgs_employees"]) == 0:
-                return None
-            else:
-                return r_api.json()["data"]["sb_usgs_employees"]
+        if "errors" in query_response.keys():
+            return query_response
         else:
-            return None
+            return query_response["data"]["sb_usgs_employees"]
