@@ -1445,7 +1445,7 @@ class Isaid:
             person_record["Expertise Terms"] = expertise_terms
 
         pubs_list = self.lookup_pubs(person_info["email"], parameter=parameter)
-        if isinstance(pubs_list, list) and isinstance(pubs_list[0], dict):
+        if isinstance(pubs_list, list) and len(pubs_list) > 0 and isinstance(pubs_list[0], dict):
             person_record["Publications"] = pubs_list
             pubs_uri_list = [i["uri"] for i in pubs_list]
 
