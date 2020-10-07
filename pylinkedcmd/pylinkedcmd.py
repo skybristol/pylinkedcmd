@@ -1503,7 +1503,6 @@ class Isaid:
                 middleName
                 lastName
                 jobTitle
-                index
                 identifier_WikiData
                 identifier_ORCID
                 generationalQualifier
