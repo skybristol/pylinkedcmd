@@ -1060,6 +1060,87 @@ class Isaid:
             "content-type": "application/json",
         }
 
+    def evaluate_criteria(self, criteria, parameter=None):
+        '''
+        Builds where clause criteria for GraphQL queries for people. Will detect common search patterns for identifier-
+        based searches but otherwise requires the parameter to be explicitly supplied.
+        :param criteria: search criteria can be either a list of strings or a single string
+        :param parameter: one of a set of available query parameters
+        :return: where string to be included in GraphQL query
+        '''
+        if isinstance(criteria, list):
+            sample_criteria = criteria[0]
+            query_operator = "_in"
+        elif isinstance(criteria, str):
+            sample_criteria = criteria
+            query_operator = "_eq"
+        else:
+            raise ValueError("You must supply either a list of values or a single string value as criteria.")
+
+        if not isinstance(sample_criteria, str):
+            raise ValueError("You must supply either a list of values or a single string value as criteria.")
+
+        if parameter is not None:
+            valid_parameters = [
+                "url",
+                "uri",
+                "state",
+                "professionalQualifier",
+                "personalTitle",
+                "organization_uri",
+                "organization_name",
+                "note",
+                "middleName",
+                "lastName",
+                "jobTitle",
+                "identifier_WikiData",
+                "identifier_ORCID",
+                "generationalQualifier",
+                "firstName",
+                "email",
+                "displayName",
+                "description",
+                "date_cached",
+                "city",
+                "cellPhone"
+            ]
+
+            if parameter not in valid_parameters:
+                raise ValueError(f"Your query parameter must be in the following list: {str(valid_parameters)}")
+
+            query_parameter = parameter
+        else:
+            if validators.email(sample_criteria):
+                query_parameter = "email"
+            elif validators.url(sample_criteria):
+                if sample_criteria.split("/")[4] == "organization":
+                    query_parameter = "organization_uri"
+                elif sample_criteria.split("/")[4] == "person":
+                    query_parameter = "uri"
+                else:
+                    raise ValueError("Criteria contains a URL, but it's not one that can be queried with.")
+            else:
+                if re.match(r"\d{4}-\d{4}-\d{4}-\d{4}", sample_criteria):
+                    query_parameter = "identifier_ORCID"
+                elif re.match(r"Q\d*", sample_criteria):
+                    query_parameter = "identifier_WikiData"
+                else:
+                    raise ValueError(
+                        "Criteria contains a string, but it's not recognized as a particular type. Please supply a parameter name.")
+
+        if isinstance(criteria, list):
+            string_criteria = str(criteria).replace("'", '"')
+        else:
+            string_criteria = f'"{criteria}"'
+
+        where_criteria = '(where: {%s: {%s: %s}}' % (
+            query_parameter,
+            query_operator,
+            string_criteria
+        )
+
+        return where_criteria
+
     def execute_query(self, query):
         '''
         Executed query against GraphQL end point
@@ -1479,17 +1560,20 @@ class Isaid:
 
         return person_record
 
-    def get_people(self, email_list=None, organization_name=None):
+    def get_people(self, criteria=None, parameter=None):
         '''
         Queries the ScienceBase Directory cache in the iSAID database for a set of records
-        :param email_list: List of email addresses to use in constraining search
+        :param criteria: Optional string or list of strings to be used in query
+        :param parameter: An options parameter name to use in query
         :return: List of dictionaries containing person records.
         '''
-        where_clause = ""
-        if email_list is not None:
-            where_clause = "(where: {email: {_in: %s}})" % (str(email_list).replace("'", '"'))
-        if organization_name is not None:
-            where_clause = '(where: {organization_name: {_eq: "%s"}})' % (organization_name)
+        where_clause = str()
+
+        if criteria is not None:
+            try:
+                where_clause = self.evaluate_criteria(criteria, parameter)
+            except ValueError as e:
+                return e
 
         q_people = '''
             {
