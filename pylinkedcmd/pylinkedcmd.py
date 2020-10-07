@@ -1499,7 +1499,7 @@ class Isaid:
         else:
             return query_response["data"]["identified_wikidata_claims"]
 
-    def assemble_person_record(self, identifier=None, parameter="email", person_doc=None):
+    def assemble_person_record(self, criteria=None, parameter="email", person_doc=None):
         '''
         Assembles a full logical document for a given person with all available information in the iSAID cache
         :param identifier: Identifier value to uniquely identify individual person
@@ -1512,16 +1512,21 @@ class Isaid:
         if person_doc is not None:
             person_info = person_doc
         else:
-            person_info = self.lookup_person(identifier, parameter=parameter)
+            if criteria is None:
+                raise ValueError("If you don't supply an existing person_doc, you need to supply search criteria.")
+            person_response = self.get_people(criteria=criteria, parameter=parameter)
+            if not isinstance(person_info, list):
+                raise ValueError(f"Something went wrong in the search for a person to assemble: {person_info}")
+            person_info = person_response[0]
 
         if not isinstance(person_info, dict):
-            return None
+            raise ValueError(f"Something went wrong in the search for a person to assemble: {person_info}")
 
         person_record = {
             "ScienceBase Directory": person_info
         }
 
-        expertise_terms = self.lookup_expertise(person_info["email"])
+        expertise_terms = self.expertise_terms(criteria=person_info["email"])
         if expertise_terms is not None:
             person_record["Expertise Terms"] = expertise_terms
 
