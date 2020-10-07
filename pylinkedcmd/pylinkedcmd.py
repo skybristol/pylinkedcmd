@@ -1489,7 +1489,7 @@ class Isaid:
         if email_list is not None:
             where_clause = "(where: {email: {_in: %s}})" % (str(email_list).replace("'", '"'))
         if organization_name is not None:
-            where_clause = "(where: {organization_name: {_eq: %s}})" % (organization_name)
+            where_clause = '(where: {organization_name: {_eq: "%s"}})' % (organization_name)
 
         q_people = '''
             {
