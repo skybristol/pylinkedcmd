@@ -1479,7 +1479,7 @@ class Isaid:
 
         return person_record
 
-    def get_people(self, email_list=None):
+    def get_people(self, email_list=None, organization_name=None):
         '''
         Queries the ScienceBase Directory cache in the iSAID database for a set of records
         :param email_list: List of email addresses to use in constraining search
@@ -1488,6 +1488,8 @@ class Isaid:
         where_clause = ""
         if email_list is not None:
             where_clause = "(where: {email: {_in: %s}})" % (str(email_list).replace("'", '"'))
+        if organization_name is not None:
+            where_clause = "(where: {organization_name: {_eq: %s}})" % (organization_name)
 
         q_people = '''
             {
@@ -1556,3 +1558,22 @@ class Isaid:
             return query_response
         else:
             return query_response["data"]["identified_expertise"]
+
+    def get_organizations(self):
+        q_orgs = '''
+            {
+              sb_usgs_employees(distinct_on: organization_uri) {
+                organization_name
+                organization_uri
+              }
+            }
+        '''
+        try:
+            query_response = self.execute_query(q_orgs)
+        except ValueError as e:
+            return e
+
+        if "errors" in query_response.keys():
+            return query_response
+        else:
+            return query_response["data"]["sb_usgs_employees"]
