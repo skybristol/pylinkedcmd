@@ -1133,7 +1133,7 @@ class Isaid:
         else:
             string_criteria = f'"{criteria}"'
 
-        where_criteria = '(where: {%s: {%s: %s}}' % (
+        where_criteria = '(where: {%s: {%s: %s}})' % (
             query_parameter,
             query_operator,
             string_criteria
