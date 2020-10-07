@@ -1055,7 +1055,7 @@ class Isaid:
     def __init__(self):
         self.description = "Set of functions for working with iSAID - the integrated Science Assessment Information" \
                            "Database."
-        self.isaid_api = "https://fast-iguana-60.hasura.app/v1/graphql"
+        self.isaid_api = "https://kickasslabs.xyz/v1/graphql"
         self.api_headers = {
             "content-type": "application/json",
         }
