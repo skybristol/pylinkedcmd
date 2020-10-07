@@ -1525,3 +1525,31 @@ class Isaid:
             return query_response
         else:
             return query_response["data"]["sb_usgs_employees"]
+
+    def expertise_terms(self, identifier=None, parameter="email"):
+        where_clause = ""
+        if identifier is not None:
+            where_clause = "(where: {%s: {_eq: %s}})" % (parameter, identifier)
+
+        q_expertise = '''
+            {
+                identified_expertise %s {
+                    term_source
+                    source_identifier
+                    term
+                    email
+                    uri
+                    identifier_ORCID
+                    identifier_WikiData
+                }
+            }
+        ''' % (where_clause)
+        try:
+            query_response = self.execute_query(q_expertise)
+        except ValueError as e:
+            return e
+
+        if "errors" in query_response.keys():
+            return query_response
+        else:
+            return query_response["data"]["identified_expertise"]
