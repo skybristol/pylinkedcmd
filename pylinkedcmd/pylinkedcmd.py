@@ -1612,13 +1612,14 @@ class Isaid:
         else:
             return query_response["data"]["sb_usgs_employees"]
 
-    def expertise_terms(self, identifier=None, parameter="email", email_list=None):
-        where_clause = ""
-        if identifier is not None:
-            where_clause = "(where: {%s: {_eq: %s}})" % (parameter, identifier)
+    def expertise_terms(self, criteria=None, parameter="email"):
+        where_clause = str()
 
-        if email_list is not None:
-            where_clause = "(where: {email: {_in: %s}})" % (str(email_list).replace("'", '"'))
+        if criteria is not None:
+            try:
+                where_clause = self.evaluate_criteria_people(criteria, parameter)
+            except ValueError as e:
+                return e
 
         q_expertise = '''
             {
