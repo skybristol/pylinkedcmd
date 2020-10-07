@@ -1499,7 +1499,6 @@ class Isaid:
                 personalTitle
                 organization_uri
                 organization_name
-                orcId
                 note
                 middleName
                 lastName
