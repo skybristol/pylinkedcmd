@@ -37,16 +37,16 @@ class Sciencebase:
             "organizationDisplayText"
         ]
         new_person_doc = {
-            "uri": person_doc["link"]["href"],
+            "identifier_sb_uri": person_doc["link"]["href"],
             "date_cached": datetime.utcnow().isoformat()
         }
         for k, v in person_doc.items():
             if k not in ignore_props and isinstance(v, str):
-                new_person_doc[k] = v
+                new_person_doc[k.lower()] = v
 
         if "identifiers" in person_doc.keys():
             for i in person_doc["identifiers"]:
-                new_person_doc[f"identifier_{i['type']}"] = i["key"]
+                new_person_doc[f"identifier_{i['type']}"] = i["key"].lower()
 
         try:
             new_person_doc["organization_name"] = person_doc["organization"]["displayText"]
@@ -71,8 +71,29 @@ class Sciencebase:
 
         if "email" in new_person_doc.keys():
             new_person_doc["email"] = new_person_doc["email"].lower()
+            new_person_doc["identifier_email"] = new_person_doc["email"].lower()
 
         return new_person_doc
+
+    def get_active_usgs_staff(self, return_format="summarized"):
+        sb_dir_next_link = "https://www.sciencebase.gov/directory/people?format=json&dataset=all&active=True&max=1000"
+        sb_dir_results = list()
+
+        while sb_dir_next_link is not None:
+            r = requests.get(sb_dir_next_link).json()
+            if len(r["people"]) > 0:
+                sb_dir_results.extend(r["people"])
+            else:
+                break
+            if "nextlink" in r.keys():
+                sb_dir_next_link = r["nextlink"]["url"]
+            else:
+                break
+
+        if return_format == "summarized":
+            return [self.summarize_sb_person(i) for i in sb_dir_results]
+
+        return sb_dir_results
 
     def lookup_sb_person_by_email(self, email):
         '''
@@ -1083,18 +1104,18 @@ class Isaid:
         if parameter is not None:
             valid_parameters = [
                 "url",
-                "uri",
                 "state",
                 "professionalQualifier",
                 "personalTitle",
                 "organization_uri",
                 "organization_name",
-                "note",
                 "middleName",
                 "lastName",
                 "jobTitle",
-                "identifier_WikiData",
-                "identifier_ORCID",
+                "identifier_wikidata",
+                "identifier_orcid",
+                "identifier_email",
+                "identifier_sb_uri",
                 "generationalQualifier",
                 "firstName",
                 "email",
@@ -1111,19 +1132,19 @@ class Isaid:
             query_parameter = parameter
         else:
             if validators.email(sample_criteria):
-                query_parameter = "email"
+                query_parameter = "identifier_email"
             elif validators.url(sample_criteria):
                 if sample_criteria.split("/")[4] == "organization":
                     query_parameter = "organization_uri"
                 elif sample_criteria.split("/")[4] == "person":
-                    query_parameter = "uri"
+                    query_parameter = "identifier_sb_uri"
                 else:
                     raise ValueError("Criteria contains a URL, but it's not one that can be queried with.")
             else:
                 if re.match(r"\d{4}-\d{4}-\d{4}-\d{4}", sample_criteria):
-                    query_parameter = "identifier_ORCID"
+                    query_parameter = "identifier_orcid"
                 elif re.match(r"Q\d*", sample_criteria):
-                    query_parameter = "identifier_WikiData"
+                    query_parameter = "identifier_wikidata"
                 else:
                     raise ValueError(
                         "Criteria contains a string, but it's not recognized as a particular type. Please supply a parameter name.")
@@ -1558,7 +1579,7 @@ class Isaid:
 
         return person_record
 
-    def get_people(self, criteria=None, parameter=None):
+    def people(self, criteria=None, parameter=None):
         '''
         Queries the ScienceBase Directory cache in the iSAID database for a set of records
         :param criteria: Optional string or list of strings to be used in query
@@ -1575,28 +1596,27 @@ class Isaid:
 
         q_people = '''
             {
-              sb_usgs_employees %s {
-                url
-                uri
-                state
-                professionalQualifier
-                personalTitle
-                organization_uri
-                organization_name
-                note
-                middleName
-                lastName
-                jobTitle
-                identifier_WikiData
-                identifier_ORCID
-                generationalQualifier
-                firstName
-                email
-                displayName
-                description
-                date_cached
-                city
+              identified_sb_directory %s {
                 cellPhone
+                city
+                date_cached
+                description
+                displayName
+                email
+                firstName
+                generationalQualifier
+                identifier_email
+                identifier_orcid
+                identifier_sb_uri
+                identifier_wikidata
+                lastName
+                middleName
+                organization_name
+                organization_uri
+                personalTitle
+                professionalQualifier
+                state
+                url
               }
             }
         ''' % (where_clause)
@@ -1608,9 +1628,9 @@ class Isaid:
         if "errors" in query_response.keys():
             return query_response
         else:
-            return query_response["data"]["sb_usgs_employees"]
+            return query_response["data"]["identified_sb_directory"]
 
-    def expertise_terms(self, criteria=None, parameter="email"):
+    def expertise(self, criteria=None, parameter=None):
         where_clause = str()
 
         if criteria is not None:
@@ -1622,13 +1642,13 @@ class Isaid:
         q_expertise = '''
             {
                 identified_expertise %s {
+                    term
                     term_source
                     source_identifier
-                    term
-                    email
-                    uri
-                    identifier_ORCID
-                    identifier_WikiData
+                    identifier_email
+                    identifier_orcid
+                    identifier_sb_uri
+                    identifier_wikidata
                 }
             }
         ''' % (where_clause)
@@ -1641,6 +1661,71 @@ class Isaid:
             return query_response
         else:
             return query_response["data"]["identified_expertise"]
+
+    def coauthor_affiliations(self, criteria=None, parameter=None):
+        where_clause = str()
+
+        if criteria is not None:
+            try:
+                where_clause = self.evaluate_criteria_people(criteria, parameter)
+            except ValueError as e:
+                return e
+
+        q_affiliations = '''
+            {
+                identified_author_affiliations %s {
+                    affiliated_organization
+                    affiliated_organization_internal_id
+                    publication_year
+                    usgs
+                    identifier_email
+                    identifier_orcid
+                    identifier_sb_uri
+                    identifier_wikidata
+                }
+            }
+        ''' % (where_clause)
+        try:
+            query_response = self.execute_query(q_affiliations)
+        except ValueError as e:
+            return e
+
+        if "errors" in query_response.keys():
+            return query_response
+        else:
+            return query_response["data"]["identified_author_affiliations"]
+
+    def coauthor_cost_centers(self, criteria=None, parameter=None):
+        where_clause = str()
+
+        if criteria is not None:
+            try:
+                where_clause = self.evaluate_criteria_people(criteria, parameter)
+            except ValueError as e:
+                return e
+
+        q_cost_centers = '''
+            {
+                identified_cost_centers %s {
+                    affiliated_cost_center
+                    affiliated_cost_center_internal_id
+                    publication_year
+                    identifier_email
+                    identifier_orcid
+                    identifier_sb_uri
+                    identifier_wikidata
+                }
+            }
+        ''' % (where_clause)
+        try:
+            query_response = self.execute_query(q_cost_centers)
+        except ValueError as e:
+            return e
+
+        if "errors" in query_response.keys():
+            return query_response
+        else:
+            return query_response["data"]["identified_cost_centers"]
 
     def get_organizations(self):
         q_orgs = '''
