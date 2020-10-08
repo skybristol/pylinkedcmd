@@ -46,7 +46,7 @@ class Sciencebase:
 
         if "identifiers" in person_doc.keys():
             for i in person_doc["identifiers"]:
-                new_person_doc[f"identifier_{i['type']}"] = i["key"].lower()
+                new_person_doc[f"identifier_{i['type'].lower()}"] = i["key"]
 
         try:
             new_person_doc["organization_name"] = person_doc["organization"]["displayText"]
