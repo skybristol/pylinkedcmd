@@ -1052,7 +1052,75 @@ class Pw:
         else:
             links = None
 
-        return summarized_record, record_sentences, cost_centers, authors, affiliations, links
+        if authors is not None and cost_centers is not None:
+            authors_to_cost_centers = list()
+            for cost_center in cost_centers:
+                for author in [i for i in authors if "orcid" in i.keys() or "email" in i.keys()]:
+                    author_to_cost_center = {
+                        "cost_center_name": cost_center["text"],
+                        "cost_center_internal_id": cost_center["id"],
+                        "cost_center_active": cost_center["active"],
+                        "publication_year": cost_center["publicationYear"]
+                    }
+                    if "email" in author.keys():
+                        author_to_cost_center["identifier_email"] = author["email"].lower().strip()
+                    if "orcid" in author.keys():
+                        author_to_cost_center["identifier_orcid"] = author["orcid"].split("/")[-1].strip()
+                    authors_to_cost_centers.append(author_to_cost_center)
+        else:
+            authors_to_cost_centers = None
+
+        if authors is not None and affiliations is not None:
+            authors_to_affiliations = list()
+            for affiliation in affiliations:
+                for author in [i for i in authors if "orcid" in i.keys() or "email" in i.keys()]:
+                    author_to_affiliation = {
+                        "affiliation_name": affiliation["text"],
+                        "affiliation_internal_id": affiliation["id"],
+                        "affiliation_active": affiliation["active"],
+                        "affiliation_usgs": affiliation["usgs"],
+                        "publication_year": affiliation["publicationYear"]
+                    }
+                    if "email" in author.keys():
+                        author_to_affiliation["identifier_email"] = author["email"].lower().strip()
+                    if "orcid" in author.keys():
+                        author_to_affiliation["identifier_orcid"] = author["orcid"].split("/")[-1].strip()
+                    authors_to_affiliations.append(author_to_affiliation)
+        else:
+            authors_to_affiliations = None
+
+        if authors is not None:
+            authors_to_coauthors = list()
+            for coauthor in authors:
+                for author in [
+                    i for i in authors if "orcid" in i.keys() or "email" in i.keys() and i["id"] != coauthor["id"]
+                ]:
+                    author_to_coauthor = {
+                        "coauthor_name": coauthor["text"],
+                        "coauthor_internal_id": coauthor["id"],
+                        "coauthor_usgs": coauthor["usgs"],
+                        "publication_year": coauthor["publicationYear"]
+                    }
+                    if "email" in author.keys():
+                        author_to_coauthor["identifier_email"] = author["email"].lower().strip()
+                    if "orcid" in author.keys():
+                        author_to_coauthor["identifier_orcid"] = author["orcid"].split("/")[-1].strip()
+
+                    authors_to_coauthors.append(author_to_coauthor)
+        else:
+            authors_to_coauthors = None
+
+        return {
+            "summarized_record": summarized_record,
+            "record_sentences": record_sentences,
+            "cost_centers": cost_centers,
+            "authors": authors,
+            "affiliations": affiliations,
+            "links": links,
+            "authors_to_cost_centers": authors_to_cost_centers,
+            "authors_to_affiliations": authors_to_affiliations,
+            "authors_to_coauthors": authors_to_coauthors
+        }
 
 
 class Isaid:
