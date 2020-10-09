@@ -36,6 +36,7 @@ class Sciencebase:
             "username",
             "organizationDisplayText"
         ]
+
         new_person_doc = {
             "identifier_sb_uri": person_doc["link"]["href"],
             "date_cached": datetime.utcnow().isoformat()
@@ -745,7 +746,9 @@ class UsgsWeb:
         page_staff_listing = list()
 
         for section in soup.findAll(tag_, class_=class_):
-            page_staff_listing.append(self.process_staff_section(section))
+            staff_listing = self.process_staff_section(section)
+            if "profile" in staff_listing.keys() and staff_listing["profile"] is not None:
+                page_staff_listing.append(self.process_staff_section(section))
 
         return page_staff_listing
 
@@ -791,7 +794,7 @@ class UsgsWeb:
             person_record["organization_link"] = org_link["href"]
 
         if email_link is not None:
-            person_record["email"] = email_link.text.replace("\t", "").strip()
+            person_record["email"] = email_link.text.replace("\t", "").strip().lower()
 
         if tel_link is not None:
             person_record["telephone"] = tel_link.text.replace("\t", "").strip()
@@ -902,26 +905,6 @@ class UsgsWeb:
             ])
 
         return profile_page_data
-
-    def get_unique_staff(self, staff_list, return_type="dict"):
-        df = pd.DataFrame([dict(t) for t in {tuple(d.items()) for d in staff_list}])
-
-        df_grouped_staff = df.groupby('identifier').agg(
-            {
-                'profile': lambda x: list(set(list(x))),
-                'email': lambda x: list(set(list(x))),
-                'name': lambda x: list(set(list(x))),
-                'organization_name': lambda x: list(set(list(x))),
-                'organization_link': lambda x: list(set(list(x))),
-                'telephone': lambda x: list(set(list(x))),
-                'title': lambda x: list(set(list(x)))
-            }
-        ).reset_index()
-
-        if return_type == "dict":
-            return df_grouped_staff.to_dict(orient="records")
-        else:
-            return df_grouped_staff
 
 
 class Pw:
