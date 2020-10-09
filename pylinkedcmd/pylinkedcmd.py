@@ -1108,37 +1108,39 @@ class Pw:
 
                     authors_to_coauthors.append(author_to_coauthor)
 
+            author_props = [
+                "text",
+                "contributorId",
+                "corporation",
+                "usgs",
+                "family",
+                "given",
+                "preferred",
+                "id",
+                "rank",
+                "uri",
+                "publicationYear",
+                "email",
+                "orcid"
+            ]
+            clean_authors = list()
+            for item in authors:
+                new_author = dict()
+                for prop in author_props:
+                    if prop in item.keys():
+                        new_author[prop] = item[prop]
+                clean_authors.append(new_author)
+                
+            authors = clean_authors
+
         else:
             authors_to_coauthors = None
-
-        author_props = [
-            "text",
-            "contributorId",
-            "corporation",
-            "usgs",
-            "family",
-            "given",
-            "preferred",
-            "id",
-            "rank",
-            "uri",
-            "publicationYear",
-            "email",
-            "orcid"
-        ]
-        clean_authors = list()
-        for item in authors:
-            new_author = dict()
-            for prop in author_props:
-                if prop in item.keys():
-                    new_author[prop] = item[prop]
-            clean_authors.append(new_author)
 
         return {
             "summarized_record": summarized_record,
             "record_sentences": record_sentences,
             "cost_centers": cost_centers,
-            "authors": clean_authors,
+            "authors": authors,
             "affiliations": affiliations,
             "links": links,
             "authors_to_cost_centers": authors_to_cost_centers,
