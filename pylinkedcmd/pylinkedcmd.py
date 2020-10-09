@@ -643,8 +643,16 @@ class Wikidata:
         return return_results
 
     def entity_data(self, entity_id, claims=True):
-        entity_response = requests.get(f"{self.entity_data_root}{entity_id}.json").json()
-        entity_doc = entity_response["entities"][entity_id]
+        entity_response = requests.get(f"{self.entity_data_root}{entity_id}.json")
+        if entity_response.status_code != 200:
+            return None, None
+
+        entity_response_data = entity_response.json()
+
+        if entity_id not in entity_response_data["entities"].keys():
+            return None, None
+
+        entity_doc = entity_response_data["entities"][entity_id]
         entity_record = dict()
         for k, v in entity_doc.items():
             if isinstance(v, str):
@@ -1130,7 +1138,7 @@ class Pw:
                     if prop in item.keys():
                         new_author[prop] = item[prop]
                 clean_authors.append(new_author)
-                
+
             authors = clean_authors
 
         else:
