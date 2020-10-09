@@ -1303,7 +1303,15 @@ class Isaid:
         else:
             return query_response["data"]["sb_usgs_staff"]
 
-    def assemble_person_record(self, criteria, parameter=None):
+    def assemble_person_record(self, criteria, parameter=None, datatypes=None):
+        if datatypes is None:
+            data_types = [k for k, v in self.title_mapping.items()]
+        else:
+            data_types = [k for k, v in self.title_mapping.items() if k in datatypes]
+
+        if len(data_types) == 0:
+            return None
+
         where_clause = str()
 
         if criteria is not None:
@@ -1312,8 +1320,9 @@ class Isaid:
             except ValueError as e:
                 return e
 
-        q = '''
-        {
+        query_sections = dict()
+
+        query_sections["sb_usgs_staff"] = '''
             sb_usgs_staff %(where_clause)s {
                 cellphone
                 city
@@ -1338,6 +1347,9 @@ class Isaid:
                 state
                 url
             }
+        ''' % {"where_clause": where_clause}
+
+        query_sections["identified_expertise"] = '''
             identified_expertise %(where_clause)s {
                 term
                 term_source
@@ -1345,6 +1357,9 @@ class Isaid:
                 identifier_email
                 identifier_orcid
             }
+        ''' % {"where_clause": where_clause}
+
+        query_sections["identified_pw_authors"] = '''
             identified_pw_authors %(where_clause)s {
                 title
                 doi
@@ -1353,6 +1368,9 @@ class Isaid:
                 identifier_email
                 identifier_orcid
             }
+        ''' % {"where_clause": where_clause}
+
+        query_sections["pw_authors_to_coauthors"] = '''
             pw_authors_to_coauthors %(where_clause)s {
                 coauthor_name
                 coauthor_usgs
@@ -1360,6 +1378,9 @@ class Isaid:
                 identifier_email
                 identifier_orcid
             }
+        ''' % {"where_clause": where_clause}
+
+        query_sections["pw_authors_to_cost_centers"] = '''
             pw_authors_to_cost_centers %(where_clause)s {
                 cost_center_name
                 cost_center_active
@@ -1367,6 +1388,9 @@ class Isaid:
                 identifier_email
                 identifier_orcid
             }
+        ''' % {"where_clause": where_clause}
+
+        query_sections["pw_authors_to_affiliations"] = '''
             pw_authors_to_affiliations %(where_clause)s {
                 affiliation_name
                 affiliation_usgs
@@ -1375,6 +1399,9 @@ class Isaid:
                 identifier_email
                 identifier_orcid
             }
+        ''' % {"where_clause": where_clause}
+
+        query_sections["identified_wikidata_entities"] = '''
             identified_wikidata_entities %(where_clause)s {
                 label_en
                 description_en
@@ -1384,6 +1411,9 @@ class Isaid:
                 identifier_email
                 identifier_orcid
             }
+        ''' % {"where_clause": where_clause}
+
+        query_sections["identified_wikidata_claims"] = '''
             identified_wikidata_claims %(where_clause)s {
                 entity_id
                 label_en
@@ -1397,19 +1427,34 @@ class Isaid:
                 identifier_email
                 identifier_orcid
             }
-        }
         ''' % {"where_clause": where_clause}
+
+        query = '''
+        {
+        '''
+
+        for datatype in data_types:
+            query = '''
+            %s
+            %s
+            ''' % (query, query_sections[datatype])
+
+        query = '''
+        %s
+        }
+        ''' % (query)
+
         try:
-            query_response = self.execute_query(q)
+            query_response = self.execute_query(query)
         except ValueError as e:
             return e
 
         if "errors" in query_response.keys():
             return query_response
         else:
-            data_response = query_response["data"]
-            for k, v in self.title_mapping.items():
-                data_response[v] = data_response.pop(k)
+            data_response = dict()
+            for k, v in query_response["data"].items():
+                data_response[self.title_mapping[k]] = v
 
             return data_response
 
