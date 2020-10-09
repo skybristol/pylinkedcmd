@@ -1165,6 +1165,16 @@ class Isaid:
         self.api_headers = {
             "content-type": "application/json",
         }
+        self.title_mapping = {
+            "sb_usgs_staff": "ScienceBase Directory",
+            "identified_expertise": "USGS Profile Expertise",
+            "identified_pw_authors": "Publications",
+            "pw_authors_to_coauthors": "Coauthors",
+            "pw_authors_to_cost_centers": "Cost Center Affiliations",
+            "pw_authors_to_affiliations": "Organization Affiliations of Coauthors",
+            "identified_wikidata_entities": "WikiData Entity",
+            "identified_wikidata_claims": "WikiData Claims"
+        }
 
     def evaluate_criteria_people(self, criteria, parameter=None):
         '''
@@ -1264,413 +1274,7 @@ class Isaid:
 
         return r.json()
 
-    def lookup_person(self, identifier, parameter="email"):
-        '''
-        The intent is to cache one and only one record for a given person in the iSAID database that is uniquely
-        and persistently identified by several different identifier schemes. This function takes one of those
-        identifiers (defaulting to email as the most common inbound search vector at this time) and returns a match.
-        :param identifier: Identifier value to uniquely identify individual person
-        :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
-        identifier_WikiData, or uri (ScienceBase Directory)
-        :return: GraphQL result (JSON object/dictionary) containing the primary identifying attributes from the
-        ScienceBase Directory cached in the iSAID database (returns None if no results found or API query fails)
-        '''
-        q_sb = '''
-          {
-            sb_usgs_employees(where: {%s: {_eq: "%s"}}) {
-                url
-                uri
-                state
-                professionalQualifier
-                personalTitle
-                organization_uri
-                organization_name
-                note
-                middleName
-                lastName
-                jobTitle
-                identifier_WikiData
-                identifier_ORCID
-                generationalQualifier
-                firstName
-                email
-                displayName
-                description
-                date_cached
-                city
-                cellPhone
-            }
-          }
-        ''' % (parameter, identifier)
-        try:
-            query_response = self.execute_query(q_sb)
-        except ValueError as e:
-            return e
-
-        if "errors" in query_response.keys():
-            return query_response
-        else:
-            if len(query_response["data"]["sb_usgs_employees"]) > 1:
-                return "Query returned more than one record, and only one record was expected."
-
-            return query_response["data"]["sb_usgs_employees"][0]
-
-    def lookup_expertise(self, identifier, parameter="email"):
-        '''
-        Looks up and returns expertise terms from USGS profile pages scraped and cached in the iSAID database
-        :param identifier: Identifier value to uniquely identify individual person
-        :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
-        identifier_WikiData, or uri (ScienceBase Directory); may also use source_identifier with the URL for the
-        Profile Page, but this can vary in format depending on how it was populated into the ScienceBase Directory
-        :return: GraphQL result (JSON array of objects/list of dictionaries) containing the expertise terms cached
-        from the USGS profile page (returns None if no results found or API query fails)
-        '''
-        q_expertise = '''
-          {
-            identified_expertise(where: {%s: {_eq: "%s"}}) 
-            {
-              term
-            }
-          }
-        ''' % (parameter, identifier)
-        try:
-            query_response = self.execute_query(q_expertise)
-        except ValueError as e:
-            return e
-
-        if "errors" in query_response.keys():
-            return query_response
-        else:
-            return query_response["data"]["identified_expertise"]
-
-    def lookup_pubs(self, identifier, parameter="email"):
-        '''
-        Looks up and returns publication records from the USGS Publications Warehouse cached in the iSAID database for
-        a given author. At this time, this will only return publications where the PW records have been properly
-        cataloged with identifiers on authors (either email or ORCID). We need to verify how extensive this cataloging
-        is on the Pubs Warehouse side and probably include either functionality for additional processing into the
-        cache or else a more sophisticated lookup mechanism.
-        :param identifier: Identifier value to uniquely identify individual author
-        :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
-        identifier_WikiData, or uri (ScienceBase Directory)
-        :return: GraphQL result (JSON array of objects/list of dictionaries) containing the uri, title, and year of
-        publication from the PW cache (returns None if no results found or API query fails)
-        '''
-        q_pubs = '''
-          {
-            identified_pw_authors(where: {%s: {_eq: "%s"}})
-            {
-              title
-              uri
-              publicationYear
-            }
-          }
-        ''' % (parameter, identifier)
-        try:
-            query_response = self.execute_query(q_pubs)
-        except ValueError as e:
-            return e
-
-        if "errors" in query_response.keys():
-            return query_response
-        else:
-            return query_response["data"]["identified_pw_authors"]
-
-    def lookup_co_authors(self, pub_list, identifier, parameter="email"):
-        '''
-        Given a list of publication URIs, returns the list of co-authors from all publications. Uses an identifier for
-        the subject author to filter.
-        :param pub_list: List of publication URL URIs
-        :param identifier: Identifier value to uniquely identify individual author
-        :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
-        identifier_WikiData, or uri (ScienceBase Directory)
-        :return: GraphQL result (JSON array of objects/list of dictionaries) containing information about coauthors,
-        including their identifiers and an indication of whether or not they are USGS employees
-        '''
-        q_co_authors = '''
-          {
-            identified_pw_authors(
-                where: {
-                    _and: {
-                        uri: {
-                            _in: %s
-                        },
-                        %s: {
-                            _neq: "%s"
-                        }
-                    }
-                }
-            ) 
-            {
-              contributorId
-              email
-              family
-              given
-              identifier_ORCID
-              sb_uri
-              usgs
-              publicationYear
-            }
-          }
-        ''' % (str(pub_list).replace("'", '"'), parameter, identifier)
-        try:
-            query_response = self.execute_query(q_co_authors)
-        except ValueError as e:
-            return e
-
-        if "errors" in query_response.keys():
-            return query_response
-        else:
-            co_author_list = query_response["data"]["identified_pw_authors"]
-
-            co_authors_with_count = list()
-            for contributorId, count in dict(Counter(i["contributorId"] for i in co_author_list)).items():
-                author_records = [i for i in co_author_list if i["contributorId"] == contributorId]
-                pub_years = [int(i["publicationYear"]) for i in author_records]
-                author_record = author_records[0]
-                author_record["count"] = count
-                author_record["start_year"] = min(pub_years)
-                author_record["end_year"] = max(pub_years)
-                del author_record["publicationYear"]
-                co_authors_with_count.append(author_record)
-
-            return co_authors_with_count
-
-    def lookup_authoring_affiliations(self, pub_list):
-        '''
-        Looks up the set of author affiliations for a given set of publications.
-        :param pub_list: List of publication URL URIs
-        :return: List of organization names, the count of occurrences as author affiliations, start and end years of
-        publications, along with flags on active and USGS
-        '''
-        q_affiliations = '''
-          {
-            pw_affiliations(where: {uri: {_in: %s}}) {
-              text
-              active
-              usgs
-              publicationYear
-            }
-          }
-        ''' % (str(pub_list).replace("'", '"'))
-        try:
-            query_response = self.execute_query(q_affiliations)
-        except ValueError as e:
-            return e
-
-        if "errors" in query_response.keys():
-            return query_response
-        else:
-            affiliation_list = query_response["data"]["pw_affiliations"]
-
-            affiliations_with_count = list()
-            for affiliation, count in dict(Counter(i["text"] for i in affiliation_list)).items():
-                affiliation_records = [i for i in affiliation_list if i["text"] == affiliation]
-                affiliation_record = {
-                    "organization_name": affiliation_records[0]["text"],
-                    "organization_active": affiliation_records[0]["active"],
-                    "usgs": affiliation_records[0]["usgs"],
-                    "count": count,
-                    "start_year": min([int(i["publicationYear"]) for i in affiliation_records]),
-                    "end_year": max([int(i["publicationYear"]) for i in affiliation_records])
-                }
-                affiliations_with_count.append(affiliation_record)
-
-            return affiliations_with_count
-
-    def lookup_pub_cost_centers(self, pub_list):
-        '''
-        Looks up the set of cost centers associated with a list of publications.
-        :param pub_list: List of publication URL URIs
-        :return: List of USGS Cost Centers, the count of occurrences as in publications, start and end years of
-        publications
-        '''
-        q_cost_centers = '''
-          {
-            pw_cost_centers(where: {uri: {_in: %s}}) {
-              text
-              publicationYear
-            }
-          }
-        ''' % (str(pub_list).replace("'", '"'))
-        try:
-            query_response = self.execute_query(q_cost_centers)
-        except ValueError as e:
-            return e
-
-        if "errors" in query_response.keys():
-            return query_response
-        else:
-            cost_centers = query_response["data"]["pw_cost_centers"]
-
-            cost_centers_with_count = list()
-            for cost_center, count in dict(Counter(i["text"] for i in cost_centers)).items():
-                cost_center_records = [i for i in cost_centers if i["text"] == cost_center]
-                cost_center_record = {
-                    "cost_center_name": cost_center_records[0]["text"],
-                    "count": count,
-                    "start_year": min([int(i["publicationYear"]) for i in cost_center_records]),
-                    "end_year": max([int(i["publicationYear"]) for i in cost_center_records])
-                }
-                cost_centers_with_count.append(cost_center_record)
-
-            return cost_centers_with_count
-
-    def lookup_pub_entities(self, pub_list):
-        '''
-        Looks up available pre-cached named entities from a previously run NER process on publication titles and
-        abstracts.
-        :param pub_list: List of publication URL URIs
-        :return: List of dictionaries/objects with name, type, and count on NER entities identified
-        '''
-        q_entities = '''
-          {
-            ner_pub_entities(where: {uri: {_in: %s}}) {
-              entity_type
-              entity_name
-              entity_count
-            }
-          }
-        ''' % (str(pub_list).replace("'", '"'))
-        try:
-            query_response = self.execute_query(q_entities)
-        except ValueError as e:
-            return e
-
-        if "errors" in query_response.keys():
-            return query_response
-        else:
-            return query_response["data"]["ner_pub_entities"]
-
-    def lookup_wikidata_entity(self, qid):
-        '''
-        Looks up a cached WikiData entity record based on QID identifier
-        :param qid: QID identifier for WikiData entity
-        :return: Returns basic information on an entity as simple, properties/values
-        '''
-        q_wd_entity = '''
-            {
-              wikidata_entities(where: {id: {_eq: "%s"}}) {
-                id
-                label_en
-                modified
-                title
-                type
-                description_en
-                aliases_en
-              }
-            }
-        ''' % (qid)
-        try:
-            query_response = self.execute_query(q_wd_entity)
-        except ValueError as e:
-            return e
-
-        if "errors" in query_response.keys():
-            return query_response
-        else:
-            if len(query_response["data"]["wikidata_entities"]) > 1:
-                return "Query returned more than one record, and only one record was expected."
-
-            return query_response["data"]["wikidata_entities"][0]
-
-    def lookup_wikidata_claims(self, qid):
-        '''
-        Looks up the set of statements/claims made about a given WikiData entity
-        :param qid: QID identifier for WikiData entity
-        :return: Returns assembled data for WikiData claims that includes both string and date values along with
-        information from links to other WikiData entities assembled in the iSAID cache
-        '''
-        q_wd_claims = '''
-            {
-              identified_wikidata_claims(where: {entity_id: {_eq: "%s"}}) {
-                label_en
-                description_en
-                property_id
-                property_value
-                ref_entity_description
-                ref_entity_label
-                entity_id
-                datatype
-              }
-            }
-        ''' % (qid)
-        try:
-            query_response = self.execute_query(q_wd_claims)
-        except ValueError as e:
-            return e
-
-        if "errors" in query_response.keys():
-            return query_response
-        else:
-            return query_response["data"]["identified_wikidata_claims"]
-
-    def assemble_person_record(self, criteria=None, parameter="email", person_doc=None):
-        '''
-        Assembles a full logical document for a given person with all available information in the iSAID cache
-        :param criteria: Identifier value to uniquely identify individual person
-        :param parameter: Variable containing the identifier; should be one of email, identifier_ORCID,
-        :param person_doc: A person document from the ScienceBase Directory cache may already be provided through
-        another process and can be used for assembly, bypassing the need to lookup a person from an identifier
-        identifier_WikiData, or uri (ScienceBase Directory)
-        :return: JSON object/dictionary containing logical sections of information for a given person
-        '''
-        if person_doc is not None:
-            person_info = person_doc
-        else:
-            person_response = self.get_people(criteria=criteria, parameter=parameter)
-            person_info = person_response[0]
-
-        person_record = {
-            "ScienceBase Directory": person_info
-        }
-
-        expertise_terms = self.expertise_terms(criteria=person_info["email"])
-        if expertise_terms is not None:
-            person_record["Expertise Terms"] = expertise_terms
-
-        pubs_list = self.lookup_pubs(person_info["email"], parameter=parameter)
-        if isinstance(pubs_list, list) and len(pubs_list) > 0 and isinstance(pubs_list[0], dict):
-            person_record["Publications"] = pubs_list
-            pubs_uri_list = [i["uri"] for i in pubs_list]
-
-            associated_cost_centers = self.lookup_pub_cost_centers(pubs_uri_list)
-            if associated_cost_centers is not None:
-                person_record["Associated Cost Centers"] = associated_cost_centers
-
-            associated_co_authors = self.lookup_co_authors(
-                pubs_uri_list,
-                person_info["email"],
-                parameter=parameter
-            )
-            if associated_co_authors is not None:
-                person_record["Associated Coauthors"] = associated_co_authors
-
-            authoring_affiliations = self.lookup_authoring_affiliations(pubs_uri_list)
-            if authoring_affiliations is not None:
-                person_record["Authoring Affiliations"] = authoring_affiliations
-
-            entities_from_pubs = self.lookup_pub_entities(pubs_uri_list)
-            if entities_from_pubs is not None:
-                person_record["Named Entities in Publications"] = entities_from_pubs
-
-        if person_info["identifier_WikiData"] is not None:
-            wikidata_entity = self.lookup_wikidata_entity(person_info["identifier_WikiData"])
-            if wikidata_entity is not None:
-                person_record["WikiData Entity"] = wikidata_entity
-            wikidata_claims = self.lookup_wikidata_claims(person_info["identifier_WikiData"])
-            if wikidata_claims is not None:
-                person_record["WikiData Statements"] = wikidata_claims
-
-        return person_record
-
-    def people(self, criteria=None, parameter=None):
-        '''
-        Queries the ScienceBase Directory cache in the iSAID database for a set of records
-        :param criteria: Optional string or list of strings to be used in query
-        :param parameter: An options parameter name to use in query
-        :return: List of dictionaries containing person records.
-        '''
+    def get_people(self, criteria=None, parameter=None):
         where_clause = str()
 
         if criteria is not None:
@@ -1679,143 +1283,140 @@ class Isaid:
             except ValueError as e:
                 return e
 
-        q_people = '''
-            {
-              identified_sb_directory %s {
-                cellPhone
+        q = '''
+        {
+            sb_usgs_staff %(where_clause)s {
+                identifier_email
+                identifier_orcid
+                displayname
+                organization_name
+            }
+        }
+        ''' % {"where_clause": where_clause}
+        try:
+            query_response = self.execute_query(q)
+        except ValueError as e:
+            return e
+
+        if "errors" in query_response.keys():
+            return query_response
+        else:
+            return query_response["data"]["sb_usgs_staff"]
+
+    def assemble_person_record(self, criteria, parameter=None):
+        where_clause = str()
+
+        if criteria is not None:
+            try:
+                where_clause = self.evaluate_criteria_people(criteria, parameter)
+            except ValueError as e:
+                return e
+
+        q = '''
+        {
+            sb_usgs_staff %(where_clause)s {
+                cellphone
                 city
                 date_cached
                 description
-                displayName
+                displayname
                 email
-                firstName
-                generationalQualifier
+                firstname
+                generationalqualifier
                 identifier_email
                 identifier_orcid
                 identifier_sb_uri
                 identifier_wikidata
-                lastName
-                middleName
+                jobtitle
+                lastname
+                middlename
+                note
                 organization_name
                 organization_uri
-                personalTitle
-                professionalQualifier
+                personaltitle
+                professionalqualifier
                 state
                 url
-              }
             }
-        ''' % (where_clause)
+            identified_expertise %(where_clause)s {
+                term
+                term_source
+                source_identifier
+                identifier_email
+                identifier_orcid
+            }
+            identified_pw_authors %(where_clause)s {
+                title
+                doi
+                uri
+                publication_year
+                identifier_email
+                identifier_orcid
+            }
+            pw_authors_to_coauthors %(where_clause)s {
+                coauthor_name
+                coauthor_usgs
+                publication_year
+                identifier_email
+                identifier_orcid
+            }
+            pw_authors_to_cost_centers %(where_clause)s {
+                cost_center_name
+                cost_center_active
+                publication_year
+                identifier_email
+                identifier_orcid
+            }
+            pw_authors_to_affiliations %(where_clause)s {
+                affiliation_name
+                affiliation_usgs
+                affiliation_active
+                publication_year
+                identifier_email
+                identifier_orcid
+            }
+            identified_wikidata_entities %(where_clause)s {
+                label_en
+                description_en
+                aliases_en
+                modified
+                identifier_wikidata
+                identifier_email
+                identifier_orcid
+            }
+            identified_wikidata_claims %(where_clause)s {
+                entity_id
+                label_en
+                description_en
+                datatype
+                property_id
+                property_value
+                property_entity_qid
+                property_entity_label
+                property_entity_description
+                identifier_email
+                identifier_orcid
+            }
+        }
+        ''' % {"where_clause": where_clause}
         try:
-            query_response = self.execute_query(q_people)
+            query_response = self.execute_query(q)
         except ValueError as e:
             return e
 
         if "errors" in query_response.keys():
             return query_response
         else:
-            return query_response["data"]["identified_sb_directory"]
+            data_response = query_response["data"]
+            for k, v in self.title_mapping.items():
+                data_response[v] = data_response.pop(k)
 
-    def expertise(self, criteria=None, parameter=None):
-        where_clause = str()
-
-        if criteria is not None:
-            try:
-                where_clause = self.evaluate_criteria_people(criteria, parameter)
-            except ValueError as e:
-                return e
-
-        q_expertise = '''
-            {
-                identified_expertise %s {
-                    term
-                    term_source
-                    source_identifier
-                    identifier_email
-                    identifier_orcid
-                    identifier_sb_uri
-                    identifier_wikidata
-                }
-            }
-        ''' % (where_clause)
-        try:
-            query_response = self.execute_query(q_expertise)
-        except ValueError as e:
-            return e
-
-        if "errors" in query_response.keys():
-            return query_response
-        else:
-            return query_response["data"]["identified_expertise"]
-
-    def coauthor_affiliations(self, criteria=None, parameter=None):
-        where_clause = str()
-
-        if criteria is not None:
-            try:
-                where_clause = self.evaluate_criteria_people(criteria, parameter)
-            except ValueError as e:
-                return e
-
-        q_affiliations = '''
-            {
-                identified_author_affiliations %s {
-                    affiliated_organization
-                    affiliated_organization_internal_id
-                    publication_year
-                    usgs
-                    identifier_email
-                    identifier_orcid
-                    identifier_sb_uri
-                    identifier_wikidata
-                }
-            }
-        ''' % (where_clause)
-        try:
-            query_response = self.execute_query(q_affiliations)
-        except ValueError as e:
-            return e
-
-        if "errors" in query_response.keys():
-            return query_response
-        else:
-            return query_response["data"]["identified_author_affiliations"]
-
-    def coauthor_cost_centers(self, criteria=None, parameter=None):
-        where_clause = str()
-
-        if criteria is not None:
-            try:
-                where_clause = self.evaluate_criteria_people(criteria, parameter)
-            except ValueError as e:
-                return e
-
-        q_cost_centers = '''
-            {
-                identified_cost_centers %s {
-                    affiliated_cost_center
-                    affiliated_cost_center_internal_id
-                    publication_year
-                    identifier_email
-                    identifier_orcid
-                    identifier_sb_uri
-                    identifier_wikidata
-                }
-            }
-        ''' % (where_clause)
-        try:
-            query_response = self.execute_query(q_cost_centers)
-        except ValueError as e:
-            return e
-
-        if "errors" in query_response.keys():
-            return query_response
-        else:
-            return query_response["data"]["identified_cost_centers"]
+            return data_response
 
     def get_organizations(self):
         q_orgs = '''
             {
-              sb_usgs_employees(distinct_on: organization_uri) {
+              sb_usgs_staff (distinct_on: organization_uri) {
                 organization_name
                 organization_uri
               }
@@ -1829,4 +1430,4 @@ class Isaid:
         if "errors" in query_response.keys():
             return query_response
         else:
-            return query_response["data"]["sb_usgs_employees"]
+            return query_response["data"]["sb_usgs_staff"]
