@@ -1127,7 +1127,7 @@ class Pw:
             "orcid"
         ]
         clean_authors = list()
-        for item in pw_authors:
+        for item in authors:
             new_author = dict()
             for prop in author_props:
                 if prop in item.keys():
