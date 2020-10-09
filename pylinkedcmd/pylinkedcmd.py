@@ -1107,12 +1107,12 @@ class Pw:
                         author_to_coauthor["identifier_orcid"] = author["orcid"].split("/")[-1].strip()
 
                     authors_to_coauthors.append(author_to_coauthor)
+
+            for author in authors:
+                if "affiliations" in author.keys():
+                    del author["affiliations"]
         else:
             authors_to_coauthors = None
-
-        for author in authors:
-            if "affiliations" in author.keys():
-                del author["affiliations"]
 
         return {
             "summarized_record": summarized_record,
