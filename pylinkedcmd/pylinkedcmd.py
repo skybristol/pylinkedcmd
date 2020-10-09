@@ -1109,8 +1109,9 @@ class Pw:
                     authors_to_coauthors.append(author_to_coauthor)
 
             for author in authors:
-                if "affiliations" in author.keys():
-                    del author["affiliations"]
+                for k, v in author.items():
+                    if isinstance(v, dict):
+                        del author[k]
         else:
             authors_to_coauthors = None
 
