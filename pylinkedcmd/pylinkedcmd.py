@@ -1110,6 +1110,9 @@ class Pw:
         else:
             authors_to_coauthors = None
 
+        for author in authors:
+            del author["affiliations"]
+
         return {
             "summarized_record": summarized_record,
             "record_sentences": record_sentences,
