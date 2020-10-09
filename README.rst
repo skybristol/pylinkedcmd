@@ -13,8 +13,9 @@ Python for Linked Corporate Master Data
         :target: https://pylinkedcmd.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
-
-
+.. image:: https://colab.research.google.com/assets/colab-badge.svg
+        :target: https://colab.research.google.com/github/skybristol/pylinkedcmd/tree/dev/examples
+        :alt: Run Examples on Google Colab
 
 Python for Linked Corporate Master Data provides tools for making corporate master data from the USGS more linked and more open. This package is being developed to meet specific needs in the USGS for working with our various public facing data systems in ways that expose that information for new uses, run transformations that expose linked data, or solve specific usability problems. However, we hope the design patterns we employ can prove useful to other groups dealing with similar challenges, and we will make every attempt to always look toward open standards and community best practices for our methodology.
 
