@@ -1111,7 +1111,8 @@ class Pw:
             authors_to_coauthors = None
 
         for author in authors:
-            del author["affiliations"]
+            if "affiliations" in author.keys():
+                del author["affiliations"]
 
         return {
             "summarized_record": summarized_record,
