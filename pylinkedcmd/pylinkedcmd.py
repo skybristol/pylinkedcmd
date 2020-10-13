@@ -15,6 +15,7 @@ import pandas as pd
 import math
 from nltk.tokenize import sent_tokenize
 from collections import Counter
+from copy import deepcopy
 
 
 class Sciencebase:
@@ -24,6 +25,11 @@ class Sciencebase:
         self.sb_directory_org_api = "https://www.sciencebase.gov/directory/organization"
         self.fix_identifiers = ["ORCID", "WikiData"]
         self.wd = Wikidata()
+        self.sb_directory_base_url = "https://www.sciencebase.gov/directory/"
+        self.ignore_org_names = [
+            "ASK USGS -- Water Webserver Team",
+            "U.S. Geological Survey - ScienceBase"
+        ]
 
     def summarize_sb_person(self, person_doc):
         ignore_props = [
@@ -356,6 +362,111 @@ class Sciencebase:
                 raise ValueError(f"Something went wrong trying to send updates to ScienceBase: {e}")
 
         return update_log
+
+    def sb_suggested_associations(self, sb_catalog_doc):
+        '''
+        Extracts and formats potential associations from a ScienceBase Catalog items for use in knowledge graphing.
+        :param sb_catalog_doc: ScienceBase Catalog item document
+        :return: list of dictionaries containing concept associations derived from the catalog item
+        '''
+        associations = list()
+        sb_catalog_uri = sb_catalog_doc["link"]["url"]
+
+        date_qualifier = next(
+            (
+                i["dateString"] for i in sb_catalog_doc["dates"] if i["type"] == "Publication"
+            ),
+            None
+        )
+        if date_qualifier is None:
+            date_qualifier = next(
+                (
+                    i["dateString"] for i in sb_catalog_doc["dates"] if i["type"] == "lastUpdated"
+                ),
+                None
+            )
+
+        for contact in [
+            i for i in sb_catalog_doc["contacts"]
+            if "contactType" in i.keys()
+               and i["contactType"] == "person"
+               and i["name"] not in self.ignore_org_names
+        ]:
+            contact_record = dict()
+            if "oldPartyId" in contact.keys() and "contactType" in contact.keys():
+                contact_record[
+                    "identifier_sb_uri"] = \
+                    f"{self.sb_directory_base_url}{contact['contactType']}/{contact['oldPartyId']}"
+
+            if "email" in contact.keys():
+                contact_record["identifier_email"] = contact["email"]
+
+            if "orcid" in contact.keys():
+                contact_record["identifier_orcid"] = contact["orcid"]
+
+            if "name" in contact.keys():
+                contact_record["identifier_name"] = contact["name"]
+
+            if "jobTitle" in contact.keys():
+                job_title_contact = deepcopy(contact_record)
+                job_title_contact["concept_association_type"] = "job title"
+                job_title_contact["reference"] = sb_catalog_uri
+                job_title_contact["date_qualifier"] = date_qualifier
+                job_title_contact["concept"] = contact["jobTitle"]
+                associations.append(job_title_contact)
+
+            if "organization" in contact.keys():
+                org_contact = deepcopy(contact_record)
+                org_contact["concept_association_type"] = "organization affiliation"
+                org_contact["reference"] = sb_catalog_uri
+                org_contact["date_qualifier"] = date_qualifier
+                org_contact["concept"] = contact["organization"]["displayText"]
+                org_contact["lookup_reference"] = json.dumps(contact["organization"])
+                associations.append(org_contact)
+
+            if "tags" in sb_catalog_doc.keys():
+                for tag in [
+                    t for t in sb_catalog_doc["tags"] if "type" in t.keys()
+                                                         and t["type"] not in ["Harvest Set"]
+                ]:
+                    tag_contact = deepcopy(contact_record)
+                    tag_contact["concept_association_type"] = "data release metadata tag"
+                    tag_contact["reference"] = sb_catalog_uri
+                    tag_contact["date_qualifier"] = date_qualifier
+                    tag_contact["concept"] = tag["name"]
+                    tag_contact["lookup_reference"] = json.dumps(tag)
+                    associations.append(tag_contact)
+
+            for coauthor in [
+                i for i in sb_catalog_doc["contacts"]
+                if "contactType" in i.keys()
+                   and i["contactType"] == "person"
+                   and i["name"] not in self.ignore_org_names
+                   and i["name"] != contact["name"]
+            ]:
+                coauthor_contact = deepcopy(contact_record)
+                coauthor_contact["concept_association_type"] = "coauthor"
+                coauthor_contact["reference"] = sb_catalog_uri
+                coauthor_contact["date_qualifier"] = date_qualifier
+                coauthor_contact["concept"] = coauthor["name"]
+                coauthor_contact["lookup_reference"] = json.dumps(coauthor)
+                associations.append(coauthor_contact)
+
+            for org in [
+                i for i in sb_catalog_doc["contacts"]
+                if "contactType" in i.keys()
+                   and i["contactType"] == "organization"
+                   and i["name"] not in self.ignore_org_names
+            ]:
+                organization_contact = deepcopy(contact_record)
+                organization_contact["concept_association_type"] = "organization data release affiliation"
+                organization_contact["reference"] = sb_catalog_uri
+                organization_contact["date_qualifier"] = date_qualifier
+                organization_contact["concept"] = org["name"]
+                organization_contact["lookup_reference"] = json.dumps(org)
+                associations.append(organization_contact)
+
+        return associations
 
 
 class Wikidata:
