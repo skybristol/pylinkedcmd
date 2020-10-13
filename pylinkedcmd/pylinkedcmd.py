@@ -1284,7 +1284,8 @@ class Isaid:
             "pw_authors_to_cost_centers": "Cost Center Affiliations",
             "pw_authors_to_affiliations": "Organization Affiliations of Coauthors",
             "identified_wikidata_entities": "WikiData Entity",
-            "identified_wikidata_claims": "WikiData Claims"
+            "identified_wikidata_claims": "WikiData Claims",
+            "data_release_associations": "ScienceBase Data Release Connections"
         }
 
     def evaluate_criteria_people(self, criteria, parameter=None):
@@ -1537,6 +1538,19 @@ class Isaid:
                 property_entity_description
                 identifier_email
                 identifier_orcid
+            }
+        ''' % {"where_clause": where_clause}
+
+        query_sections["data_release_associations"] = '''
+            data_release_associations %(where_clause)s {
+                concept
+                concept_association_type
+                date_qualifier
+                identifier_email
+                identifier_name
+                identifier_sb_uri
+                lookup_reference
+                reference
             }
         ''' % {"where_clause": where_clause}
 

@@ -4,6 +4,7 @@ from joblib import Parallel, delayed
 import tqdm
 from sqlalchemy import create_engine
 import pandas as pd
+import os
 
 cmd_sb = pylinkedcmd.pylinkedcmd.Sciencebase()
 sb = sciencebasepy.SbSession()
