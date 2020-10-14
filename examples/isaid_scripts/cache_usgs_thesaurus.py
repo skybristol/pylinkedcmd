@@ -2,6 +2,7 @@ from sqlalchemy import create_engine
 import pandas as pd
 from urllib.request import urlopen
 from zipfile import ZipFile
+import os
 
 thesauri_download_url = 'https://apps.usgs.gov/thesaurus/download/thesauri.zip'
 term_base_url = "https://apps.usgs.gov/thesaurus/term.php"

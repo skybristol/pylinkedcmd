@@ -23,7 +23,7 @@ else:
         delayed(pw_query_accumulator)
         (
             i
-        ) for i in tqdm.tqdm([year for year in range(1867,2021)])
+        ) for i in tqdm.tqdm([year for year in range(1867, 2021)])
     )
 
     pickle.dump(pw_query_urls, open(pw_query_urls_file, "wb"))
@@ -40,16 +40,12 @@ def pw_file_cache(url):
             pickle.dump(pw_records, open(file_name, "wb"))
 
 
-pw_summarization = {
-    "pw_summaries": list(),
-    "pw_sentences": list(),
-    "pw_cost_centers": list(),
-    "pw_authors": list(),
-    "pw_affiliations": list(),
-    "pw_links": list(),
-    "pw_authors_to_cost_centers": list(),
-    "pw_authors_to_affiliations": list(),
-    "pw_authors_to_coauthors": list()
+summarization = {
+    "assets": list(),
+    "sentences": list(),
+    "claims": list(),
+    "lookups": list(),
+    "links": list()
 }
 
 
@@ -61,22 +57,11 @@ def process_pw_batch(url):
     for record in pw_records:
         summary = cmd_pw.summarize_pw_record(record)
 
-        pw_summarization["pw_summaries"].append(summary["summarized_record"])
-        pw_summarization["pw_sentences"].extend(summary["record_sentences"])
-        if summary["cost_centers"] is not None:
-            pw_summarization["pw_cost_centers"].extend(summary["cost_centers"])
-        if summary["authors"] is not None:
-            pw_summarization["pw_authors"].extend(summary["authors"])
-        if summary["affiliations"] is not None:
-            pw_summarization["pw_affiliations"].extend(summary["affiliations"])
-        if summary["links"] is not None:
-            pw_summarization["pw_links"].extend(summary["links"])
-        if summary["authors_to_cost_centers"] is not None:
-            pw_summarization["pw_authors_to_cost_centers"].extend(summary["authors_to_cost_centers"])
-        if summary["authors_to_affiliations"] is not None:
-            pw_summarization["pw_authors_to_affiliations"].extend(summary["authors_to_affiliations"])
-        if summary["authors_to_coauthors"] is not None:
-            pw_summarization["pw_authors_to_coauthors"].extend(summary["authors_to_coauthors"])
+        summarization["assets"].append(summary["summary"])
+        summarization["sentences"].extend(summary["sentences"])
+        summarization["lookups"].extend(summary["lookup"])
+        summarization["claims"].extend(summary["claims"])
+        summarization["links"].extend(summary["links"])
 
 
 Parallel(n_jobs=20, prefer="threads")(
@@ -94,24 +79,20 @@ pg_db = os.environ["PG_DB"]
 
 pg_engine = create_engine(f'postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}')
 
-for k, v in pw_summarization.items():
-    if isinstance(v, list) and len(v) > 0 and isinstance(v[0], dict):
-        df = pd.DataFrame(v)
-        try:
-            df.to_sql(
-                k,
-                pg_engine,
-                index=False,
-                if_exists="append",
-                chunksize=1000
-            )
-        except:
-            existing_data = pd.read_sql(f"SELECT * FROM {k}", pg_engine)
-            df_all = pd.concat([existing_data, df])
-            df.to_sql(
-                k,
-                pg_engine,
-                index=False,
-                if_exists="replace",
-                chunksize=1000
-            )
+pd.DataFrame(pw_summarization["pw_summaries"]).to_sql(
+    "assets",
+    pg_engine,
+    index=False,
+    if_exists="append",
+    chunksize=1000
+)
+
+for k, v in summarization.items():
+    if len(v) > 0:
+        pd.DataFrame(v).to_sql(
+            k,
+            pg_engine,
+            index=False,
+            if_exists="append",
+            chunksize=1000
+        )
