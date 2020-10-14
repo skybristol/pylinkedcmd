@@ -395,7 +395,7 @@ class Sciencebase:
 
         claim_root = {
             "claim_created": datetime.utcnow().isoformat(),
-            "claim_source": "USGS Publications Warehouse",
+            "claim_source": "ScienceBase Catalog",
             "reference": sb_catalog_doc["link"]["url"],
             "date_qualifier": date_qualifier,
             "subject_instance_of": "person"
@@ -1200,7 +1200,7 @@ class Pw:
 
         claim_root = {
             "claim_created": datetime.utcnow().isoformat(),
-            "claim_source": "ScienceBase Catalog Data Releases",
+            "claim_source": "USGS Publications Warehouse",
             "reference": url,
             "date_qualifier": datepublished,
         }
