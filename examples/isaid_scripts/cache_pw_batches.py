@@ -68,7 +68,8 @@ Parallel(n_jobs=20, prefer="threads")(
     delayed(process_pw_batch)
     (
         i
-    ) for i in tqdm.tqdm([i["url"] for i in pw_query_urls if 2019 <= i["year"] < 2021])
+    ) for i in tqdm.tqdm([i["url"] for i in pw_query_urls if i["year"] < 1900])
+#    ) for i in tqdm.tqdm([i["url"] for i in pw_query_urls if 2019 <= i["year"] < 2021])
 )
 
 pg_user = os.environ["PG_USER"]
