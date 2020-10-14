@@ -1360,7 +1360,7 @@ class Pw:
         for author in pw_authors:
             author_record = deepcopy(lookup_stub)
             author_record["property_label"] = "author"
-            author_record["property_value"] = author["text"]
+            author_record["property_value_label"] = author["text"]
             if "email" in author.keys():
                 author_record["identifier_email"] = author["email"].lower().strip()
             if "orcid" in author.keys():
