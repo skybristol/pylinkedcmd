@@ -511,8 +511,7 @@ class Sciencebase:
             d["dateString"] for d in sb_catalog_doc["dates"] if d["type"] == "Publication"
         ), summarized_record["datecreated"])
 
-
-        if "Data Release" in sb_catalog_doc["systemTypes"]:
+        if "systemTypes" in sb_catalog_doc.keys() and "Data Release" in sb_catalog_doc["systemTypes"]:
             summarized_record["additionaltype"] = "USGS Data Release"
         else:
             # Revisit type classification
