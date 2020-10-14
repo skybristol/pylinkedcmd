@@ -13,7 +13,7 @@ data_release_items = list()
 items = sb.find_items(
     {
         'filter': 'systemType=Data Release',
-        'fields': 'title,dates,contacts,tags,webLinks',
+        'fields': 'title,body,dates,contacts,tags,identifiers,distributionLinks',
         'max': 1000
     }
 )
@@ -45,7 +45,7 @@ Parallel(n_jobs=50, prefer="threads")(
         pw_item
     ) for pw_item in tqdm.tqdm(data_release_items)
 )
-
+'''
 pg_user = os.environ["PG_USER"]
 pg_pass = os.environ["PG_PASS"]
 pg_host = os.environ["PG_HOST"]
@@ -63,3 +63,4 @@ for k, v in summarization.items():
             if_exists="append",
             chunksize=1000
         )
+'''

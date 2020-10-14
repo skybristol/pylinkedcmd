@@ -556,8 +556,14 @@ class Sciencebase:
 
         for contact in sb_catalog_doc["contacts"]:
             lookup_record = deepcopy(lookup_stub)
-            lookup_record["type"] = contact["contactType"]
-            lookup_record["role"] = contact["type"]
+            if "contactType" in contact.keys():
+                lookup_record["type"] = contact["contactType"]
+            else:
+                lookup_record["type"] = "Unknown"
+            if "type" in contact.keys():
+                lookup_record["role"] = contact["type"]
+            else:
+                lookup_record["role"] = "Unknown"
             lookup_record["name"] = contact["name"]
             if "email" in contact.keys():
                 lookup_record["identifier_email"] = contact["email"]
