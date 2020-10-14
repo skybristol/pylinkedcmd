@@ -519,7 +519,7 @@ class Sciencebase:
 
         summarized_record["identifier"] = next(
             (
-                i["key"] for i in sb_catalog_doc["identifiers"] if i["type"] == "DOI"
+                i["key"] for i in sb_catalog_doc["identifiers"] if "identifiers" in i.keys() and i["type"] == "DOI"
             ), None)
 
         record_sentences = list()
