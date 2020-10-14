@@ -31,7 +31,7 @@ summarization = {
 
 
 def accumulator(sb_doc):
-    item_data = cmd_sb.sb_catalog_item_summary(sb_doc)
+    item_data = cmd_sb.catalog_item_summary(sb_doc)
     summarization["assets"].append(item_data["summary"])
     summarization["sentences"].extend(item_data["sentences"])
     summarization["claims"].extend(item_data["claims"])
