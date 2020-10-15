@@ -1200,6 +1200,24 @@ class Pw:
             "Abstract not supplied at this time"
         ]
 
+    def pw_modifications(self, num_days=1):
+        query_url = f"{self.publication_api}/?page_size=1000&mod_x_days={num_days}"
+
+        r = requests.get(query_url)
+
+        if r.status_code != 200:
+            return None
+
+        response_data = r.json()
+
+        if "recordCount" not in response_data.keys():
+            return None
+
+        if response_data["recordCount"] > 1000:
+            return response_data["recordCount"]
+
+        return response_data["records"]
+
     def get_pw_query_urls(self, year):
         '''
         Function helps to build out logical batches of USGS Pubs Warehouse REST API queries in order to retrieve all
