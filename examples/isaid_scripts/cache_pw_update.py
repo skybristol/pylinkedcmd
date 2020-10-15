@@ -5,6 +5,7 @@ from joblib import Parallel, delayed
 import tqdm
 from datetime import datetime
 import dateutil
+import os
 
 cmd_pw = pylinkedcmd.pylinkedcmd.Pw()
 
@@ -69,8 +70,6 @@ if last_x_days > 0:
         with pg_engine.connect() as con:
             for statement in delete_statements:
                 rs = con.execute(statement)
-                for row in rs:
-                    print(row)
 
         for k, v in summarization.items():
             if len(v) > 0:

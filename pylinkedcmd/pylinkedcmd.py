@@ -44,7 +44,7 @@ class Sciencebase:
         ]
 
         new_person_doc = {
-            "identifier_sb_uri": person_doc["link"]["href"],
+            "identifier_sbid": person_doc["link"]["href"],
             "date_cached": datetime.utcnow().isoformat()
         }
         for k, v in person_doc.items():
@@ -1431,17 +1431,6 @@ class Isaid:
         self.api_headers = {
             "content-type": "application/json",
         }
-        self.title_mapping = {
-            "sb_usgs_staff": "ScienceBase Directory",
-            "identified_expertise": "USGS Profile Expertise",
-            "identified_pw_authors": "Publications",
-            "pw_authors_to_coauthors": "Coauthors",
-            "pw_authors_to_cost_centers": "Cost Center Affiliations",
-            "pw_authors_to_affiliations": "Organization Affiliations of Coauthors",
-            "identified_wikidata_entities": "WikiData Entity",
-            "identified_wikidata_claims": "WikiData Claims",
-            "data_release_associations": "ScienceBase Data Release Connections"
-        }
 
     def evaluate_criteria_people(self, criteria, parameter=None):
         '''
@@ -1552,7 +1541,7 @@ class Isaid:
 
         q = '''
         {
-            sb_usgs_staff %(where_clause)s {
+            people %(where_clause)s {
                 identifier_email
                 identifier_orcid
                 displayname
@@ -1568,29 +1557,21 @@ class Isaid:
         if "errors" in query_response.keys():
             return query_response
         else:
-            return query_response["data"]["sb_usgs_staff"]
+            return query_response["data"]["people"]
 
-    def assemble_person_record(self, criteria, parameter=None, datatypes=None):
-        if datatypes is None:
-            data_types = [k for k, v in self.title_mapping.items()]
-        else:
-            data_types = [k for k, v in self.title_mapping.items() if k in datatypes]
+    def assemble_person_record(self, criteria, parameter="email", datatypes=None):
+        where_clause = '(where: {%s: {%s: %s}})' % (
+            query_parameter,
+            query_operator,
+            string_criteria
+        )
 
-        if len(data_types) == 0:
-            return None
 
-        where_clause = str()
-
-        if criteria is not None:
-            try:
-                where_clause = self.evaluate_criteria_people(criteria, parameter)
-            except ValueError as e:
-                return e
 
         query_sections = dict()
 
-        query_sections["sb_usgs_staff"] = '''
-            sb_usgs_staff %(where_clause)s {
+        query_sections["people"] = '''
+            people %(where_clause)s {
                 cellphone
                 city
                 date_cached
@@ -1616,55 +1597,28 @@ class Isaid:
             }
         ''' % {"where_clause": where_clause}
 
-        query_sections["identified_expertise"] = '''
-            identified_expertise %(where_clause)s {
-                term
-                term_source
-                source_identifier
-                identifier_email
-                identifier_orcid
+        query_sections["contacts"] = '''
+            contacts %(where_clause)s {
+                url
+                publisher
+                publication
+                name
+                identifier
+                datepublished
+                datemodified
+                datecreated
+                contact_type
+                contact_sbid
+                contact_role
+                contact_orcid
+                contact_name
+                contact_email
+                additionaltype
             }
         ''' % {"where_clause": where_clause}
 
-        query_sections["identified_pw_authors"] = '''
-            identified_pw_authors %(where_clause)s {
-                title
-                doi
-                uri
-                publication_year
-                identifier_email
-                identifier_orcid
-            }
-        ''' % {"where_clause": where_clause}
-
-        query_sections["pw_authors_to_coauthors"] = '''
+        query_sections["claims"] = '''
             pw_authors_to_coauthors %(where_clause)s {
-                coauthor_name
-                coauthor_usgs
-                publication_year
-                identifier_email
-                identifier_orcid
-            }
-        ''' % {"where_clause": where_clause}
-
-        query_sections["pw_authors_to_cost_centers"] = '''
-            pw_authors_to_cost_centers %(where_clause)s {
-                cost_center_name
-                cost_center_active
-                publication_year
-                identifier_email
-                identifier_orcid
-            }
-        ''' % {"where_clause": where_clause}
-
-        query_sections["pw_authors_to_affiliations"] = '''
-            pw_authors_to_affiliations %(where_clause)s {
-                affiliation_name
-                affiliation_usgs
-                affiliation_active
-                publication_year
-                identifier_email
-                identifier_orcid
             }
         ''' % {"where_clause": where_clause}
 
@@ -1693,19 +1647,6 @@ class Isaid:
                 property_entity_description
                 identifier_email
                 identifier_orcid
-            }
-        ''' % {"where_clause": where_clause}
-
-        query_sections["data_release_associations"] = '''
-            data_release_associations %(where_clause)s {
-                concept
-                concept_association_type
-                date_qualifier
-                identifier_email
-                identifier_name
-                identifier_sb_uri
-                lookup_reference
-                reference
             }
         ''' % {"where_clause": where_clause}
 
@@ -1741,7 +1682,7 @@ class Isaid:
     def get_organizations(self):
         q_orgs = '''
             {
-              sb_usgs_staff (distinct_on: organization_uri) {
+              people (distinct_on: organization_uri) {
                 organization_name
                 organization_uri
               }
@@ -1755,7 +1696,7 @@ class Isaid:
         if "errors" in query_response.keys():
             return query_response
         else:
-            return query_response["data"]["sb_usgs_staff"]
+            return query_response["data"]["people"]
 
 
 def process_abstract(abstract, source_url, title=None, parse_sentences=False):

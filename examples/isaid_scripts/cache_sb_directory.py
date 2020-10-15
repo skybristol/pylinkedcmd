@@ -1,23 +1,17 @@
 import pylinkedcmd
 import pandas as pd
+import numpy as np
 from sqlalchemy import create_engine
-import pickle
 import os
 
 cmd_sb = pylinkedcmd.pylinkedcmd.Sciencebase()
 
-if os.path.exists("raw_usgs_staff.p"):
-    raw_usgs_staff = pickle.load(open("raw_usgs_staff.p", "rb"))
-else:
-    raw_usgs_staff = cmd_sb.get_active_usgs_staff(return_format="raw")
-    pickle.dump(raw_usgs_staff, open("raw_usgs_staff.p", "wb"))
+usgs_staff = cmd_sb.get_active_usgs_staff()
 
-summarized_usgs_staff = [cmd_sb.summarize_sb_person(i) for i in raw_usgs_staff]
-
-unique_staff = [
-    next(i for i in summarized_usgs_staff if i["identifier_sb_uri"] == uri)
-    for uri in list(set([i["identifier_sb_uri"] for i in summarized_usgs_staff]))
-]
+df_people = pd.DataFrame(usgs_staff)
+df_people = df_people.drop_duplicates(subset='identifier_sbid', keep="first")
+df_people.loc[df_people['identifier_orcid'].duplicated(), 'identifier_orcid'] = np.NaN
+df_people.loc[df_people['identifier_email'].duplicated(), 'identifier_email'] = np.NaN
 
 pg_user = os.environ["PG_USER"]
 pg_pass = os.environ["PG_PASS"]
@@ -27,10 +21,8 @@ pg_db = os.environ["PG_DB"]
 
 pg_engine = create_engine(f'postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}')
 
-df_active_staff = pd.DataFrame(unique_staff)
-
-df_active_staff.groupby('identifier_sb_uri', as_index=False).max().to_sql(
-    "sb_usgs_staff",
+df_people.to_sql(
+    "people",
     pg_engine,
     index=False,
     if_exists="replace",
