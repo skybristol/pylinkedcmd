@@ -413,14 +413,14 @@ class Sciencebase:
 
             contact_record = deepcopy(claim_root)
             if "oldPartyId" in contact.keys() and "contactType" in contact.keys():
-                contact_record["subjectid_sb_directory"] = \
+                contact_record["subject_sbid"] = \
                     f"{self.sb_directory_base_url}{contact['contactType']}/{contact['oldPartyId']}"
 
             if "email" in contact.keys():
-                contact_record["subjectid_email"] = contact["email"]
+                contact_record["subject_email"] = contact["email"]
 
             if "orcid" in contact.keys():
-                contact_record["subjectid_orcid"] = contact["orcid"]
+                contact_record["subject_orcid"] = contact["orcid"]
 
             if "name" in contact.keys():
                 contact_record["subject_label"] = contact["name"]
@@ -428,15 +428,18 @@ class Sciencebase:
             if "jobTitle" in contact.keys():
                 job_title_contact = deepcopy(contact_record)
                 job_title_contact["property_label"] = "job title"
-                job_title_contact["property_value_label"] = contact["jobTitle"]
+                job_title_contact["object_instance_of"] = "field of work"
+                job_title_contact["object_label"] = contact["jobTitle"]
                 claims.append(job_title_contact)
 
             if "organization" in contact.keys():
                 org_contact = deepcopy(contact_record)
                 org_contact["property_label"] = "organization affiliation"
-                org_contact["property_value_label"] = contact["organization"]["displayText"]
+                org_contact["object_instance_of"] = "organization"
+                org_contact["object_label"] = contact["organization"]["displayText"]
+
                 if "directoryId" in contact["organization"].keys():
-                    org_contact["property_value_id_sb_directory"] = \
+                    org_contact["object_sbid"] = \
                         f"{self.sb_directory_base_url}organization/{contact['organization']['directoryId']}"
                 claims.append(org_contact)
 
@@ -447,17 +450,26 @@ class Sciencebase:
                 ]:
                     tag_contact = deepcopy(contact_record)
                     tag_contact["property_label"] = "data release metadata tag"
-                    tag_contact["property_value_label"] = tag["name"]
-                    tag_contact["property_value_reference"] = ":".join([v for k, v in tag.items() if k != "name"])
+                    tag_contact["object_instance_of"] = "data descriptor"
+                    tag_contact["object_label"] = tag["name"]
+                    tag_contact["object_qualifier"] = ":".join([v for k, v in tag.items() if k != "name"])
                     claims.append(tag_contact)
 
             for coauthor_name in [i for i in unique_contact_names if i != contact["name"]]:
                 coauthor = next((i for i in sb_catalog_doc["contacts"] if i["name"] == coauthor_name), None)
                 coauthor_contact = deepcopy(contact_record)
                 coauthor_contact["property_label"] = "data release co-developer"
-                coauthor_contact["property_value_label"] = coauthor["name"]
+                coauthor_contact["object_instance_of"] = "person"
+                coauthor_contact["object_label"] = coauthor["name"]
+
+                if "email" in coauthor.keys():
+                    coauthor_contact["object_email"] = coauthor["email"]
+
+                if "orcid" in coauthor.keys():
+                    coauthor_contact["object_orcid"] = coauthor["orcid"]
+
                 if "oldPartyId" in coauthor.keys():
-                    coauthor_contact["property_value_id_sb_directory"] = \
+                    coauthor_contact["object_sbid"] = \
                         f"{self.sb_directory_base_url}{coauthor['contactType']}/{coauthor['oldPartyId']}"
                 claims.append(coauthor_contact)
 
@@ -469,13 +481,49 @@ class Sciencebase:
             ]:
                 organization_contact = deepcopy(contact_record)
                 organization_contact["property_label"] = "organization data release affiliation"
-                organization_contact["property_value_label"] = org["name"]
+                organization_contact["object_instance_of"] = "organization"
+                organization_contact["object_label"] = org["name"]
                 if "oldPartyId" in org.keys():
-                    organization_contact["property_value_id_sb_directory"] = \
+                    organization_contact["object_sbid"] = \
                         f"{self.sb_directory_base_url}{org['contactType']}/{org['oldPartyId']}"
                 claims.append(organization_contact)
 
         return claims
+
+    def catalog_item_contacts(self, record_contacts, summary_record):
+        contacts = list()
+        for contact in record_contacts:
+            try:
+                del summary_record["abstract"]
+                del summary_record["text"]
+            except:
+                pass
+            summary_record["contact_name"] = contact["name"]
+            summary_record["contact_type"] = "Unknown"
+            summary_record["contact_role"] = "Unknown"
+            summary_record["contact_email"] = None
+            summary_record["contact_orcid"] = None
+            summary_record["contact_sbid"] = None
+
+            if "contactType" in contact.keys():
+                summary_record["contact_type"] = contact["contactType"]
+
+            if "type" in contact.keys():
+                summary_record["contact_role"] = contact["type"]
+
+            if "email" in contact.keys():
+                summary_record["contact_email"] = contact["email"]
+
+            if "orcid" in contact.keys():
+                summary_record["contact_orcid"] = contact["orcid"]
+
+            if "oldPartyId" in contact.keys():
+                summary_record["contact_sbid"] = \
+                    f"{self.sb_directory_base_url}{contact['contactType']}/{contact['oldPartyId']}"
+
+            contacts.append(summary_record)
+
+        return contacts
 
     def catalog_item_summary(self, sb_catalog_doc=None, sb_catalog_url=None, parse_sentences=False):
         '''
@@ -524,55 +572,16 @@ class Sciencebase:
             ), None)
 
         record_sentences = list()
-
         if "body" in sb_catalog_doc.keys():
-            abstract_soup = BeautifulSoup(sb_catalog_doc["body"], 'html.parser')
-            if abstract_soup.get_text() != "No abstract available.":
-                summarized_record["abstract"] = abstract_soup.get_text()
-                summarized_record["text"] = \
-                    f"{summarized_record['name']}. {summarized_record['abstract']}"
+            processed_abstract = process_abstract(
+                abstract=sb_catalog_doc["body"],
+                title=summarized_record["name"],
+                source_url=summarized_record["url"],
+                parse_sentences=parse_sentences
+            )
 
-                if parse_sentences:
-                    record_sentences.append({
-                        "uri": summarized_record["url"],
-                        "source": "title",
-                        "sentence": summarized_record["name"]
-                    })
-
-                    for sentence in sent_tokenize(summarized_record["abstract"]):
-                        record_sentences.append({
-                            "url": summarized_record["url"],
-                            "source": "abstract",
-                            "sentence": sentence
-                        })
-
-        item_claims = self.catalog_item_claims(sb_catalog_doc=sb_catalog_doc)
-
-        lookup = list()
-        lookup_stub = {
-            'url': summarized_record["url"],
-            'datepublished': summarized_record["datepublished"]
-        }
-
-        for contact in sb_catalog_doc["contacts"]:
-            lookup_record = deepcopy(lookup_stub)
-            if "contactType" in contact.keys():
-                lookup_record["type"] = contact["contactType"]
-            else:
-                lookup_record["type"] = "Unknown"
-            if "type" in contact.keys():
-                lookup_record["role"] = contact["type"]
-            else:
-                lookup_record["role"] = "Unknown"
-            lookup_record["name"] = contact["name"]
-            if "email" in contact.keys():
-                lookup_record["identifier_email"] = contact["email"]
-            if "orcid" in contact.keys():
-                lookup_record["identifier_orcid"] = contact["orcid"]
-            if "oldPartyId" in contact.keys():
-                lookup_record["identifier_sb_directory"] = \
-                    f"{self.sb_directory_base_url}{contact['contactType']}/{contact['oldPartyId']}"
-            lookup.append(lookup_record)
+            summarized_record["abstract"] = processed_abstract["abstract"]
+            record_sentences = processed_abstract["sentences"]
 
         links = list()
         if "distributionLinks" in sb_catalog_doc.keys():
@@ -585,10 +594,10 @@ class Sciencebase:
                 })
 
         return {
-            "summary": summarized_record,
+            "assets": summarized_record,
             "sentences": record_sentences,
-            "lookup": lookup,
-            "claims": item_claims,
+            "contacts": self.catalog_item_contacts(sb_catalog_doc["contacts"], summarized_record),
+            "claims": self.catalog_item_claims(sb_catalog_doc=sb_catalog_doc),
             "links": links
         }
 
@@ -1190,65 +1199,6 @@ class Pw:
             "Abstract not supplied at this time"
         ]
 
-    def claims_from_authors(self, url, datepublished, pw_authors, cost_centers):
-        '''
-        Extracts and formats potential associations from a ScienceBase Catalog items for use in knowledge graphing.
-        :param sb_catalog_doc: ScienceBase Catalog item document
-        :return: list of dictionaries containing concept associations derived from the catalog item
-        '''
-        claims = list()
-
-        claim_root = {
-            "claim_created": datetime.utcnow().isoformat(),
-            "claim_source": "USGS Publications Warehouse",
-            "reference": url,
-            "date_qualifier": datepublished,
-        }
-
-        for author in pw_authors:
-            author_claim = deepcopy(claim_root)
-            author_claim["subject_instance_of"] = "person"
-            author_claim["subjectid_pw_contributor_id"] = author["contributorId"]
-            author_claim["subjectid_name"] = author["text"]
-            author_claim["subject_original_data"] = json.dumps(author)
-
-            if "email" in author.keys():
-                author_claim["subjectid_email"] = author["email"]
-
-            if "orcid" in author.keys():
-                author_claim["subjectid_orcid"] = author["orcid"].split("/")[-1].strip()
-
-            if "affiliations" in author.keys():
-                for affiliation in author["affiliations"]:
-                    contact_affiliation = deepcopy(author_claim)
-                    contact_affiliation["property_label"] = "organization affiliation"
-                    contact_affiliation["property_value_label"] = affiliation["text"]
-                    contact_affiliation["property_value_original_data"] = json.dumps(affiliation)
-                    claims.append(contact_affiliation)
-
-            for coauthor in [
-                i for i in pw_authors
-                if i["contributorId"] != author["contributorId"]
-            ]:
-                coauthor_contact = deepcopy(author_claim)
-                coauthor_contact["property_label"] = "coauthor"
-                coauthor_contact["property_value_label"] = coauthor["text"]
-                if "email" in coauthor.keys():
-                    coauthor_contact["propertyid_email"] = coauthor["email"]
-                if "orcid" in coauthor.keys():
-                    coauthor_contact["propertyid_orcid"] = coauthor["orcid"].split("/")[-1].strip()
-                coauthor_contact["property_value_original_data"] = json.dumps(coauthor)
-                claims.append(coauthor_contact)
-
-            for cost_center in cost_centers:
-                cost_center_claim = deepcopy(author_claim)
-                cost_center_claim["property_label"] = "USGS Cost Center association from publication"
-                cost_center_claim["property_value_label"] = cost_center["text"]
-                cost_center_claim["property_value_original_data"] = json.dumps(cost_center)
-                claims.append(cost_center_claim)
-
-        return claims
-
     def get_pw_query_urls(self, year):
         '''
         Function helps to build out logical batches of USGS Pubs Warehouse REST API queries in order to retrieve all
@@ -1272,6 +1222,87 @@ class Pw:
                 })
             return pw_retrieval_list
 
+    def pub_record_claims(self, url, datepublished, pw_authors, cost_centers):
+        claims = list()
+
+        claim_root = {
+            "claim_created": datetime.utcnow().isoformat(),
+            "claim_source": "USGS Publications Warehouse",
+            "reference": url,
+            "date_qualifier": datepublished,
+        }
+
+        for author in pw_authors:
+            author_claim = deepcopy(claim_root)
+            author_claim["subject_instance_of"] = "person"
+            author_claim["subject_label"] = author["text"]
+
+            if "email" in author.keys():
+                author_claim["subject_email"] = author["email"]
+
+            if "orcid" in author.keys():
+                author_claim["subject_orcid"] = author["orcid"].split("/")[-1].strip()
+
+            if "affiliations" in author.keys():
+                for affiliation in author["affiliations"]:
+                    contact_affiliation = deepcopy(author_claim)
+                    contact_affiliation["property_label"] = "organization affiliation"
+                    contact_affiliation["object_instance_of"] = "organization"
+                    contact_affiliation["object_label"] = affiliation["text"]
+                    claims.append(contact_affiliation)
+
+            for coauthor in [
+                i for i in pw_authors
+                if i["contributorId"] != author["contributorId"]
+            ]:
+                coauthor_contact = deepcopy(author_claim)
+                coauthor_contact["property_label"] = "coauthor"
+                coauthor_contact["object_instance_of"] = "person"
+                coauthor_contact["object_label"] = coauthor["text"]
+
+                if "email" in coauthor.keys():
+                    coauthor_contact["object_email"] = coauthor["email"]
+
+                if "orcid" in coauthor.keys():
+                    coauthor_contact["object_orcid"] = coauthor["orcid"].split("/")[-1].strip()
+
+                claims.append(coauthor_contact)
+
+            for cost_center in cost_centers:
+                cost_center_claim = deepcopy(author_claim)
+                cost_center_claim["property_label"] = "USGS Cost Center association from publication"
+                cost_center_claim["object_instance_of"] = "organization"
+                cost_center_claim["object_label"] = cost_center["text"]
+                claims.append(cost_center_claim)
+
+        return claims
+
+    def pub_item_contacts(self, record_contacts, summary_record):
+        contacts = list()
+        contact_record = deepcopy(summary_record)
+        for contact in record_contacts:
+            try:
+                del contact_record["abstract"]
+                del contact_record["text"]
+            except:
+                pass
+            contact_record["contact_name"] = contact["name"]
+            contact_record["contact_type"] = contact["type"]
+            contact_record["contact_role"] = None
+            contact_record["contact_email"] = None
+            contact_record["contact_orcid"] = None
+            contact_record["contact_sbid"] = None
+
+            if "email" in contact.keys():
+                contact_record["contact_email"] = contact["email"]
+
+            if "orcid" in contact.keys():
+                contact_record["contact_orcid"] = contact["orcid"]
+
+            contacts.append(contact_record)
+
+        return contacts
+
     def summarize_pw_record(self, pw_record, parse_sentences=False):
         '''
         Function to summarize the important pieces of information from a USGS Pubs Warehouse record for a given pub
@@ -1291,7 +1322,6 @@ class Pw:
         summarized_record["url"] = f"{self.publication_api}/{pw_record['text'].split('-')[0].strip()}"
         summarized_record["datepublished"] = pw_record["publicationYear"]
         summarized_record["name"] = pw_record["title"]
-        summarized_record["text"] = pw_record["title"]
         summarized_record["datemodified"] = pw_record["lastModifiedDate"]
         summarized_record["datecreated"] = datetime.utcnow().isoformat()
         summarized_record["additionaltype"] = pw_record["publicationType"]["text"]
@@ -1313,63 +1343,52 @@ class Pw:
             pass
 
         record_sentences = list()
-
         if "docAbstract" in pw_record.keys():
-            abstract_soup = BeautifulSoup(pw_record["docAbstract"], 'html.parser')
-            if abstract_soup.get_text() not in self.no_abstract_text_list:
-                summarized_record["abstract"] = abstract_soup.get_text().strip()
-                summarized_record["text"] = f"{summarized_record['text']}. {summarized_record['abstract']}"
+            processed_abstract = process_abstract(
+                abstract=pw_record["docAbstract"],
+                source_url=summarized_record["url"],
+                title=summarized_record["name"],
+                parse_sentences=parse_sentences
+            )
 
-                if parse_sentences:
-                    record_sentences.append({
-                        "url": summarized_record["url"],
-                        "source": "title",
-                        "sentence": summarized_record["title"]
-                    })
-
-                    for sentence in sent_tokenize(summarized_record["abstract"]):
-                        record_sentences.append({
-                            "url": summarized_record["url"],
-                            "source": "abstract",
-                            "sentence": sentence
-                        })
+            summarized_record["abstract"] = processed_abstract["abstract"]
+            record_sentences = processed_abstract["sentences"]
 
         pw_authors = list()
         if "contributors" in pw_record.keys() and "authors" in pw_record["contributors"].keys():
             pw_authors = pw_record["contributors"]["authors"]
 
-        pub_claims = self.claims_from_authors(
+        pub_claims = self.pub_record_claims(
             url=summarized_record["url"],
             datepublished=summarized_record["datepublished"],
             pw_authors=pw_authors,
             cost_centers=pw_record["costCenters"]
         )
 
-        pub_lookup = list()
-        lookup_stub = {
-            'url': summarized_record["url"],
-            'datepublished': summarized_record["datepublished"]
-        }
-
+        all_contacts = list()
         for cost_center in pw_record["costCenters"]:
-            cost_center_record = deepcopy(lookup_stub)
-            cost_center_record["property_label"] = "USGS Cost Center"
-            cost_center_record["property_value_label"] = cost_center["text"]
-            pub_lookup.append(cost_center_record)
+            all_contacts.append({
+                "name": cost_center["text"],
+                "type": "USGS Cost Center"
+            })
 
         for author in pw_authors:
-            author_record = deepcopy(lookup_stub)
-            author_record["property_label"] = "author"
-            author_record["property_value_label"] = author["text"]
+            author_contact = {
+                "name": author["text"],
+                "type": "Author"
+            }
             if "email" in author.keys():
-                author_record["identifier_email"] = author["email"].lower().strip()
+                author_contact["email"] = author["email"].lower().strip()
             if "orcid" in author.keys():
-                author_record["identifier_orcid"] = author["orcid"].split("/")[-1].strip()
-            pub_lookup.append(author_record)
+                author_contact["orcid"] = author["orcid"].split("/")[-1].strip()
+                all_contacts.append(author_contact)
 
         links = list()
         if "links" in pw_record.keys():
-            for link in pw_record["links"]:
+            for link in [
+                i for i in pw_record["links"]
+                if i["type"]["text"] != 'Thumbnail'
+            ]:
                 links.append({
                     "url": summarized_record["url"],
                     "link_url": link["url"],
@@ -1377,9 +1396,9 @@ class Pw:
                 })
 
         return {
-            "summary": summarized_record,
+            "assets": summarized_record,
             "sentences": record_sentences,
-            "lookup": pub_lookup,
+            "contacts": self.pub_item_contacts(all_contacts, summarized_record),
             "claims": pub_claims,
             "links": links
         }
@@ -1718,3 +1737,29 @@ class Isaid:
             return query_response
         else:
             return query_response["data"]["sb_usgs_staff"]
+
+
+def process_abstract(abstract, source_url, title=None, parse_sentences=False):
+    abstract_soup = BeautifulSoup(abstract, 'html.parser')
+    abstract_text = abstract_soup.get_text()
+
+    sentences = list()
+    if parse_sentences:
+        if title is not None:
+            sentences.append({
+                "url": source_url,
+                "source": "title",
+                "sentence": title.strip()
+            })
+
+        for sentence in sent_tokenize(abstract_text):
+            sentences.append({
+                "url": source_url,
+                "source": "abstract",
+                "sentence": sentence
+            })
+
+    return {
+        "abstract": abstract_text,
+        "sentences": sentences
+    }
