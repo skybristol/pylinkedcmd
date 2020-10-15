@@ -55,6 +55,14 @@ class Sciencebase:
             for i in person_doc["identifiers"]:
                 new_person_doc[f"identifier_{i['type'].lower()}"] = i["key"]
 
+        if "orcid" in new_person_doc.keys() \
+            and len(new_person_doc["orcid"]) > 0 \
+            and ( \
+                "identifier_orcid" not in new_person_doc.keys() \
+                or new_person_doc["identifier_orcid"] is None \
+                or len(new_person_doc["identifier_orcid"]) < 19):
+            new_person_doc["identifier_orcid"] = new_person_doc["orcid"]
+
         try:
             new_person_doc["organization_name"] = person_doc["organization"]["displayText"]
         except KeyError:

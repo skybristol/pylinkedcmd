@@ -21,10 +21,14 @@ pg_db = os.environ["PG_DB"]
 
 pg_engine = create_engine(f'postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}')
 
+with pg_engine.connect() as con:
+    con.execute("TRUNCATE people")
+    con.close()
+
 df_people.to_sql(
     "people",
     pg_engine,
     index=False,
-    if_exists="replace",
+    if_exists="append",
     chunksize=1000
 )
