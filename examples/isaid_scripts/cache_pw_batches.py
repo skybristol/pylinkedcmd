@@ -44,8 +44,8 @@ while len(pw_cache_files) > 0:
     summarization = {
         "assets": list(),
         "sentences": list(),
+        "contacts": list(),
         "claims": list(),
-        "lookups": list(),
         "links": list()
     }
 

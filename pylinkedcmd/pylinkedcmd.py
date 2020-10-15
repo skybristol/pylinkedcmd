@@ -493,35 +493,36 @@ class Sciencebase:
     def catalog_item_contacts(self, record_contacts, summary_record):
         contacts = list()
         for contact in record_contacts:
+            contact_record = deepcopy(summary_record)
             try:
-                del summary_record["abstract"]
-                del summary_record["text"]
+                del contact_record["abstract"]
+                del contact_record["text"]
             except:
                 pass
-            summary_record["contact_name"] = contact["name"]
-            summary_record["contact_type"] = "Unknown"
-            summary_record["contact_role"] = "Unknown"
-            summary_record["contact_email"] = None
-            summary_record["contact_orcid"] = None
-            summary_record["contact_sbid"] = None
+            contact_record["contact_name"] = contact["name"]
+            contact_record["contact_type"] = "Unknown"
+            contact_record["contact_role"] = "Unknown"
+            contact_record["contact_email"] = None
+            contact_record["contact_orcid"] = None
+            contact_record["contact_sbid"] = None
 
             if "contactType" in contact.keys():
-                summary_record["contact_type"] = contact["contactType"]
+                contact_record["contact_type"] = contact["contactType"]
 
             if "type" in contact.keys():
-                summary_record["contact_role"] = contact["type"]
+                contact_record["contact_role"] = contact["type"]
 
             if "email" in contact.keys():
-                summary_record["contact_email"] = contact["email"]
+                contact_record["contact_email"] = contact["email"]
 
             if "orcid" in contact.keys():
-                summary_record["contact_orcid"] = contact["orcid"]
+                contact_record["contact_orcid"] = contact["orcid"]
 
             if "oldPartyId" in contact.keys():
-                summary_record["contact_sbid"] = \
+                contact_record["contact_sbid"] = \
                     f"{self.sb_directory_base_url}{contact['contactType']}/{contact['oldPartyId']}"
 
-            contacts.append(summary_record)
+            contacts.append(contact_record)
 
         return contacts
 
@@ -553,7 +554,7 @@ class Sciencebase:
         summarized_record["name"] = sb_catalog_doc["title"]
         summarized_record["datecreated"] = datetime.utcnow().isoformat()
         # Revisit publisher
-        summarized_record["publisher_name"] = "USGS"
+        summarized_record["publisher"] = "USGS"
 
         summarized_record["datepublished"] = next((
             d["dateString"] for d in sb_catalog_doc["dates"] if d["type"] == "Publication"
@@ -1279,8 +1280,8 @@ class Pw:
 
     def pub_item_contacts(self, record_contacts, summary_record):
         contacts = list()
-        contact_record = deepcopy(summary_record)
         for contact in record_contacts:
+            contact_record = deepcopy(summary_record)
             try:
                 del contact_record["abstract"]
                 del contact_record["text"]
