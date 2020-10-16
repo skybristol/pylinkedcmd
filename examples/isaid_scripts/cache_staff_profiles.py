@@ -20,10 +20,13 @@ profile_urls = pd.read_sql(
 )["profile"].to_list()
 
 profiles = list()
+claims = list()
 
 
 def accumulator(url):
-    profiles.append(usgs_web.scrape_profile(url))
+    profile_info = usgs_web.scrape_profile(url)
+    profiles.append(profile_info["summary"])
+    claims.extend(profile_info["claims"])
 
 
 Parallel(n_jobs=20, prefer="threads")(
@@ -47,43 +50,10 @@ else:
         chunksize=1000
     )
 
-    expertise_terms = list()
-    for item in [i for i in profiles if "expertise" in i.keys() and len(i["expertise"]) > 0]:
-        for term in item["expertise"]:
-            for t in term.split(","):
-                d_term = {
-                    "term_source": "USGS Staff Profiles",
-                    "source_identifier": item["profile"],
-                    "term": t.strip()
-                }
-                expertise_terms.append(d_term)
-
-    if len(expertise_terms) > 0:
-        df_expertise = pd.DataFrame(expertise_terms)
-        df_expertise.to_sql(
-            "expertise_terms",
-            pg_engine,
-            index=False,
-            if_exists="replace",
-            chunksize=1000
-        )
-
-    profile_links = list()
-    for item in [i for i in profiles if "links" in i.keys() and len(i["links"]) > 0]:
-        for link in item["links"]:
-            d_link = {
-                "link_source": "USGS Staff Profiles",
-                "source_identifier": item["profile"],
-                "link_href": link
-            }
-            profile_links.append(d_link)
-
-    if len(profile_links) > 0:
-        df_profile_links = pd.DataFrame(profile_links)
-        df_profile_links.to_sql(
-            "profile_links",
-            pg_engine,
-            index=False,
-            if_exists="replace",
-            chunksize=1000
-        )
+    pd.DataFrame(claims).to_sql(
+        "claims",
+        pg_engine,
+        index=False,
+        if_exists="append",
+        chunksize=1000
+    )
