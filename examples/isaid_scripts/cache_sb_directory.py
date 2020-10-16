@@ -22,7 +22,7 @@ pg_db = os.environ["PG_DB"]
 pg_engine = create_engine(f'postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}')
 
 with pg_engine.connect() as con:
-    con.execute("TRUNCATE people")
+    con.execute("DELETE FROM people")
     con.close()
 
 df_people.to_sql(

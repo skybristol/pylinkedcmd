@@ -14,7 +14,6 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import math
 from nltk.tokenize import sent_tokenize
-from collections import Counter
 from copy import deepcopy
 
 
@@ -1173,19 +1172,24 @@ class UsgsWeb:
             "reference": page_url,
             "date_qualifier": datetime.utcnow().isoformat(),
             "subject_instance_of": "person",
-            "property_label": "self-asserted expertise term",
+            "property_label": "expertise",
+            "object_instance_of": "professional expertise",
+            "object_qualifier": "subject personal assertion"
         }
 
+        if profile_page_data["display_name"] is not None:
+            claim_root["subject_label"] = profile_page_data["display_name"]
+
         if profile_page_data["email"] is not None:
-            claim_root["subjectid_email"] = profile_page_data["email"]
+            claim_root["subject_email"] = profile_page_data["email"]
 
         if profile_page_data["orcid"] is not None:
-            claim_root["subjectid_orcid"] = profile_page_data["orcid"]
+            claim_root["subject_orcid"] = profile_page_data["orcid"]
 
-        if "subjectid_orcid" in claim_root.keys() or "subjectid_email" in claim_root.keys():
+        if any(k in claim_root.keys() for k in ["subject_label", "subject_email", "subject_orcid"]):
             for expertise_term in profile_page_data["expertise"]:
                 expertise_claim = deepcopy(claim_root)
-                expertise_claim["property_value_label"] = expertise_term
+                expertise_claim["object_label"] = expertise_term
                 expertise_claims.append(expertise_claim)
 
         return {
@@ -1439,6 +1443,31 @@ class Isaid:
         self.api_headers = {
             "content-type": "application/json",
         }
+        self.isaid_data_collections = {
+            "directory": {
+                "title": "Directory",
+                "description": "Properties pulled from the ScienceBase Directory for USGS employees and other people"
+            },
+            "assets": {
+                "title": "Assets",
+                "description": "Scientific assets such as publications, datasets, models, instruments, and "
+                               "other articles. Linked to people through roles such as author/creator."
+            },
+            "claims": {
+                "title": "Claims",
+                "description": "Statements or assertions about a person or asset that characterize the entities in "
+                               "various ways, including the connections between entities."
+            },
+            "wikidata_entities": {
+                "title": "WikiData Entity",
+                "description": "An entity in WikiData representing a person or scientific asset."
+            },
+            "wikidata_claims": {
+                "title": "WikiData Claims",
+                "descriptions": "Statements or assertions about a person or other entity in WikiData that characterize "
+                                "them in various ways, including the connections between entities."
+            }
+        }
 
     def evaluate_criteria_people(self, criteria, parameter=None):
         '''
@@ -1496,7 +1525,7 @@ class Isaid:
                 if sample_criteria.split("/")[4] == "organization":
                     query_parameter = "organization_uri"
                 elif sample_criteria.split("/")[4] == "person":
-                    query_parameter = "identifier_sb_uri"
+                    query_parameter = "identifier_sbid"
                 else:
                     raise ValueError("Criteria contains a URL, but it's not one that can be queried with.")
             else:
@@ -1506,7 +1535,8 @@ class Isaid:
                     query_parameter = "identifier_wikidata"
                 else:
                     raise ValueError(
-                        "Criteria contains a string, but it's not recognized as a particular type. Please supply a parameter name.")
+                        "Criteria contains a string, but it's not recognized as a particular type. "
+                        "Please supply a parameter name.")
 
         if isinstance(criteria, list):
             string_criteria = str(criteria).replace("'", '"')
@@ -1518,6 +1548,14 @@ class Isaid:
             query_operator,
             string_criteria
         )
+
+        if query_parameter.split("_")[0] != "identifier":
+            people_records = self.get_people(where_clause=where_criteria)
+            where_criteria = '(where: {%s: {%s: %s}})' % (
+                "identifier_sbid",
+                "_in",
+                str([i["identifier_sbid"] for i in people_records]).replace("'", '"')
+            )
 
         return where_criteria
 
@@ -1538,22 +1576,20 @@ class Isaid:
 
         return r.json()
 
-    def get_people(self, criteria=None, parameter=None):
-        where_clause = str()
+    def get_people(self, criteria=None, parameter=None, where_clause=None):
+        if where_clause is None:
+            where_clause = str()
 
-        if criteria is not None:
-            try:
-                where_clause = self.evaluate_criteria_people(criteria, parameter)
-            except ValueError as e:
-                return e
+            if criteria is not None:
+                try:
+                    where_clause = self.evaluate_criteria_people(criteria, parameter)
+                except ValueError as e:
+                    return e
 
         q = '''
         {
             people %(where_clause)s {
-                identifier_email
-                identifier_orcid
-                displayname
-                organization_name
+                identifier_sbid
             }
         }
         ''' % {"where_clause": where_clause}
@@ -1565,21 +1601,26 @@ class Isaid:
         if "errors" in query_response.keys():
             return query_response
         else:
-            return query_response["data"]["people"]
+            return [i["identifier_sbid"] for i in query_response["data"]["people"]]
 
-    def assemble_person_record(self, criteria, parameter="email", datatypes=None):
-        where_clause = '(where: {%s: {%s: %s}})' % (
-            query_parameter,
-            query_operator,
-            string_criteria
-        )
+    def assemble_person_record(self, criteria, parameter="identifier_email", datatypes=None):
+        if parameter.split("_")[0] != "identifier":
+            raise ValueError("")
 
+        if datatypes is None:
+            datatypes = [k for k, v in self.isaid_data_collections.items()]
+        else:
+            datatypes = [i for i in datatypes if i in [k for k, v in self.isaid_data_collections.items()]]
 
+        try:
+            where_clause = self.evaluate_criteria_people(criteria, parameter)
+        except ValueError as e:
+            return e
 
         query_sections = dict()
 
-        query_sections["people"] = '''
-            people %(where_clause)s {
+        query_sections["directory"] = '''
+            directory %(where_clause)s {
                 cellphone
                 city
                 date_cached
@@ -1590,7 +1631,7 @@ class Isaid:
                 generationalqualifier
                 identifier_email
                 identifier_orcid
-                identifier_sb_uri
+                identifier_sbid
                 identifier_wikidata
                 jobtitle
                 lastname
@@ -1605,56 +1646,60 @@ class Isaid:
             }
         ''' % {"where_clause": where_clause}
 
-        query_sections["contacts"] = '''
-            contacts %(where_clause)s {
-                url
-                publisher
-                publication
-                name
-                identifier
-                datepublished
-                datemodified
-                datecreated
-                contact_type
-                contact_sbid
-                contact_role
-                contact_orcid
-                contact_name
-                contact_email
+        query_sections["assets"] = '''
+            assets %(where_clause)s {
                 additionaltype
+                contact_role
+                contact_type
+                datecreated
+                datemodified
+                datepublished
+                identifier_email
+                identifier_orcid
+                identifier
+                identifier_sbid
+                identifier_wikidata
+                name
+                publication
+                publisher
+                url
             }
         ''' % {"where_clause": where_clause}
 
         query_sections["claims"] = '''
-            pw_authors_to_coauthors %(where_clause)s {
+            claims %(where_clause)s {
+                claim_created
+                claim_source
+                date_qualifier
+                object_instance_of
+                object_label
+                object_qualifier
+                property_label
+                reference
+                subject_instance_of
+                subject_label
             }
-        ''' % {"where_clause": where_clause}
+        ''' % {"where_clause": where_clause.replace("identifier_", "subject_identifier_")}
 
-        query_sections["identified_wikidata_entities"] = '''
-            identified_wikidata_entities %(where_clause)s {
-                label_en
-                description_en
+        query_sections["wikidata_entities"] = '''
+            wikidata_entities %(where_clause)s {
                 aliases_en
-                modified
+                description_en
                 identifier_wikidata
-                identifier_email
-                identifier_orcid
+                label_en
+                modified
+                type
             }
         ''' % {"where_clause": where_clause}
 
-        query_sections["identified_wikidata_claims"] = '''
-            identified_wikidata_claims %(where_clause)s {
-                entity_id
-                label_en
-                description_en
-                datatype
-                property_id
-                property_value
-                property_entity_qid
-                property_entity_label
+        query_sections["wikidata_claims"] = '''
+            wikidata_claims %(where_clause)s {
+                property_description
                 property_entity_description
-                identifier_email
-                identifier_orcid
+                property_entity_label
+                property_id
+                property_label
+                property_value
             }
         ''' % {"where_clause": where_clause}
 
@@ -1662,11 +1707,11 @@ class Isaid:
         {
         '''
 
-        for datatype in data_types:
+        for data_type in datatypes:
             query = '''
             %s
             %s
-            ''' % (query, query_sections[datatype])
+            ''' % (query, query_sections[data_type])
 
         query = '''
         %s
@@ -1681,11 +1726,11 @@ class Isaid:
         if "errors" in query_response.keys():
             return query_response
         else:
-            data_response = dict()
+            dataset = dict()
             for k, v in query_response["data"].items():
-                data_response[self.title_mapping[k]] = v
-
-            return data_response
+                dataset[self.isaid_data_collections[k]["title"]] = v
+                #query_response["data"][self.isaid_data_collections[k]["title"]] = query_response["data"].pop(k)
+            return query_response["data"]
 
     def get_organizations(self):
         q_orgs = '''
