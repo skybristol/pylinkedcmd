@@ -1603,6 +1603,29 @@ class Isaid:
         else:
             return [i["identifier_sbid"] for i in query_response["data"]["people"]]
 
+    def get_claims(self, criteria, parameter=None, claim_properties=None):
+        try:
+            where_clause = self.evaluate_criteria_people(criteria, parameter)
+        except ValueError as e:
+            return e
+
+        query = '''{
+            claims %(where_clause)s {
+                claim_created
+                claim_source
+                date_qualifier
+                object_instance_of
+                object_label
+                object_qualifier
+                property_label
+                reference
+                subject_instance_of
+                subject_label
+            }
+        }
+        ''' % {"where_clause": where_clause.replace("identifier_", "subject_identifier_")}
+
+
     def assemble_person_record(self, criteria, parameter="identifier_email", datatypes=None):
         if parameter.split("_")[0] != "identifier":
             raise ValueError("")
