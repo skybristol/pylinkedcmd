@@ -1590,6 +1590,8 @@ class Isaid:
         {
             people %(where_clause)s {
                 identifier_sbid
+                identifier_email
+                identifier_orcid
             }
         }
         ''' % {"where_clause": where_clause}
@@ -1603,28 +1605,54 @@ class Isaid:
         else:
             return [i["identifier_sbid"] for i in query_response["data"]["people"]]
 
-    def get_claims(self, criteria, parameter=None, claim_properties=None):
+    def people_by_org(self, organization_name, response="email_list"):
+        where_clause = '''
+        (where: {organization_name: {_eq: "%s"}})
+        ''' % (organization_name)
+
+        q = '''
+        {
+            directory %(where_clause)s {
+                identifier_email
+                identifier_sbid
+                identifier_wikidata
+                identifier_orcid
+                jobtitle
+                lastname
+                middlename
+                note
+                orcid
+                organization_name
+                organization_uri
+                personaltitle
+                professionalqualifier
+                state
+                url
+                generationalqualifier
+                firstname
+                email
+                displayname
+                description
+                date_cached
+                city
+                cellphone
+            }
+        }
+        ''' % {"where_clause": where_clause}
         try:
-            where_clause = self.evaluate_criteria_people(criteria, parameter)
+            query_response = self.execute_query(q)
         except ValueError as e:
             return e
 
-        query = '''{
-            claims %(where_clause)s {
-                claim_created
-                claim_source
-                date_qualifier
-                object_instance_of
-                object_label
-                object_qualifier
-                property_label
-                reference
-                subject_instance_of
-                subject_label
-            }
-        }
-        ''' % {"where_clause": where_clause.replace("identifier_", "subject_identifier_")}
+        if "errors" in query_response.keys():
+            print(query_response)
+            return None
+        else:
+            if response == "email_list":
+                data_response = [i["identifier_email"] for i in query_response["data"]["directory"]]
+                data_response.sort()
 
+            return data_response
 
     def assemble_person_record(self, criteria, parameter="identifier_email", datatypes=None):
         if parameter.split("_")[0] != "identifier":
@@ -1758,7 +1786,7 @@ class Isaid:
     def get_organizations(self):
         q_orgs = '''
             {
-              people (distinct_on: organization_uri) {
+              directory (distinct_on: organization_uri) {
                 organization_name
                 organization_uri
               }
@@ -1772,7 +1800,7 @@ class Isaid:
         if "errors" in query_response.keys():
             return query_response
         else:
-            return query_response["data"]["people"]
+            return query_response["data"]["directory"]
 
 
 def process_abstract(abstract, source_url, title=None, parse_sentences=False):
