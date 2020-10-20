@@ -109,6 +109,21 @@ class Sciencebase:
 
         return sb_dir_results
 
+    def get_staff_by_email(self, email_list, return_format="summarized"):
+        sb_dir_results = list()
+
+        for email in email_list:
+            if validators.email(email):
+                query = f"https://www.sciencebase.gov/directory/people?format=json&email={email}"
+                r = requests.get(query).json()
+                if len(r["people"]) > 0:
+                    sb_dir_results.extend(r["people"])
+
+        if return_format == "summarized":
+            return [self.summarize_sb_person(i) for i in sb_dir_results]
+
+        return sb_dir_results
+
     def lookup_sb_person_by_email(self, email):
         '''
         Searches the ScienceBase Directory for a person by their email address. Returns None if either no record or
