@@ -456,7 +456,7 @@ class Sciencebase:
                                                          and t["type"] not in ["Harvest Set"]
                 ]:
                     tag_contact = deepcopy(contact_record)
-                    tag_contact["property_label"] = "data release metadata tag"
+                    tag_contact["property_label"] = "keyword"
                     tag_contact["object_instance_of"] = "data descriptor"
                     tag_contact["object_label"] = tag["name"]
                     tag_contact["object_qualifier"] = ":".join([v for k, v in tag.items() if k != "name"])
@@ -465,7 +465,11 @@ class Sciencebase:
             for coauthor_name in [i for i in unique_contact_names if i != contact["name"]]:
                 coauthor = next((i for i in sb_catalog_doc["contacts"] if i["name"] == coauthor_name), None)
                 coauthor_contact = deepcopy(contact_record)
-                coauthor_contact["property_label"] = "data release co-developer"
+                coauthor_contact["property_label"] = "coauthor"
+                if "type" in coauthor.keys():
+                    coauthor_contact["object_qualifier"] = coauthor["type"]
+                else:
+                    coauthor_contact["object_qualifier"] = "data item co-listed contact"
                 coauthor_contact["object_instance_of"] = "person"
                 coauthor_contact["object_label"] = coauthor["name"]
 
@@ -487,7 +491,7 @@ class Sciencebase:
                    and i["name"] not in self.ignore_org_names
             ]:
                 organization_contact = deepcopy(contact_record)
-                organization_contact["property_label"] = "organization data release affiliation"
+                organization_contact["property_label"] = "organization affiliation"
                 organization_contact["object_instance_of"] = "organization"
                 organization_contact["object_label"] = org["name"]
                 if "oldPartyId" in org.keys():
@@ -1301,7 +1305,8 @@ class Pw:
 
             for cost_center in cost_centers:
                 cost_center_claim = deepcopy(author_claim)
-                cost_center_claim["property_label"] = "USGS Cost Center association from publication"
+                cost_center_claim["property_label"] = "organization affiliation"
+                cost_center_claim["object_qualifier"] = "USGS Cost Center association from publication"
                 cost_center_claim["object_instance_of"] = "organization"
                 cost_center_claim["object_label"] = cost_center["text"]
                 claims.append(cost_center_claim)
@@ -1588,7 +1593,7 @@ class Isaid:
 
         q = '''
         {
-            people %(where_clause)s {
+            directory %(where_clause)s {
                 identifier_sbid
                 identifier_email
                 identifier_orcid
@@ -1603,7 +1608,7 @@ class Isaid:
         if "errors" in query_response.keys():
             return query_response
         else:
-            return [i["identifier_sbid"] for i in query_response["data"]["people"]]
+            return query_response["data"]["directory"]
 
     def people_by_org(self, organization_name, response="email_list"):
         where_clause = '''
@@ -1729,6 +1734,14 @@ class Isaid:
                 reference
                 subject_instance_of
                 subject_label
+                subject_identifier_email
+                subject_identifier_orcid
+                subject_identifier_sbid
+                subject_identifier_wikidata
+                object_identifier_email
+                object_identifier_orcid
+                object_identifier_sbid
+                object_identifier_wikidata
             }
         ''' % {"where_clause": where_clause.replace("identifier_", "subject_identifier_")}
 

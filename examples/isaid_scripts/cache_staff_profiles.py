@@ -50,6 +50,10 @@ else:
         chunksize=1000
     )
 
+    with pg_engine.connect() as con:
+        con.execute("DELETE FROM claims WHERE claim_source = 'USGS Profile Page Expertise'")
+        con.close()
+
     pd.DataFrame(claims).to_sql(
         "claims",
         pg_engine,
