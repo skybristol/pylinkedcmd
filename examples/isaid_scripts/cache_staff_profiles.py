@@ -25,8 +25,9 @@ claims = list()
 
 def accumulator(url):
     profile_info = usgs_web.scrape_profile(url)
-    profiles.append(profile_info["summary"])
-    claims.extend(profile_info["claims"])
+    if profile_info is not None:
+        profiles.append(profile_info["summary"])
+        claims.extend(profile_info["claims"])
 
 
 Parallel(n_jobs=20, prefer="threads")(

@@ -15,6 +15,7 @@ import pandas as pd
 import math
 from nltk.tokenize import sent_tokenize
 from copy import deepcopy
+from jsonbender import bend, K, S, F, OptionalS
 
 
 class Sciencebase:
@@ -29,6 +30,30 @@ class Sciencebase:
             "ASK USGS -- Water Webserver Team",
             "U.S. Geological Survey - ScienceBase"
         ]
+        self.cmd_isaid = Isaid()
+        self.org_mapping = {
+        'identifier': S('links', 0, 'url'),
+        'name': S('name'),
+        'url': OptionalS('url'),
+        'alternateName': OptionalS('aliases', 0, 'name'),
+        'addressLocality': OptionalS('primaryLocation', 'streetAddress', 'city'),
+        'addressRegion': OptionalS('primaryLocation', 'streetAddress', 'state'),
+        'region': OptionalS('extensions', 'usgsOrganization', 'region'),
+        'usgsMissionAreas': F(
+            lambda source: 
+            [k["displayText"] for k 
+                in source["extensions"]["usgsOrganization"]["usgsMissionAreas"]
+            ] if exists(source, ["extensions","usgsOrganization","usgsMissionAreas"])
+            else None
+        ),
+        'usgsPrograms': F(
+            lambda source: 
+            [k["displayText"] for k 
+                in source["extensions"]["usgsOrganization"]["usgsPrograms"]
+            ] if exists(source, ["extensions","usgsOrganization","usgsPrograms"])
+            else None
+        )
+    }
 
     def summarize_sb_person(self, person_doc):
         ignore_props = [
@@ -627,6 +652,24 @@ class Sciencebase:
             "claims": self.catalog_item_claims(sb_catalog_doc=sb_catalog_doc),
             "links": links
         }
+
+    def get_sb_org(self, identifier, map_it=True):
+        if not validators.url(identifier):
+            try:
+                oldPartyId = int(identifier)
+                identifier = f"{self.sb_directory_org_api}/{str(oldPartyId)}"
+            except:
+                return None
+
+        r = requests.get(identifier, headers={"accept": "application/json"})
+        
+        if r.status_code != 200:
+            return None
+        
+        if map_it:
+            return bend(self.org_mapping, r.json())
+        else:
+            return r.json()
 
 
 class Wikidata:
@@ -1805,16 +1848,12 @@ class Isaid:
         if "errors" in query_response.keys():
             return query_response
         else:
-            dataset = dict()
-            for k, v in query_response["data"].items():
-                dataset[self.isaid_data_collections[k]["title"]] = v
-                #query_response["data"][self.isaid_data_collections[k]["title"]] = query_response["data"].pop(k)
             return query_response["data"]
 
     def get_organizations(self):
         q_orgs = '''
             {
-              directory (distinct_on: organization_uri) {
+              directory (distinct_on: organization_uri, where: {organization_uri: {_is_null: false}}) {
                 organization_name
                 organization_uri
               }
@@ -1855,3 +1894,8 @@ def process_abstract(abstract, source_url, title=None, parse_sentences=False):
         "abstract": abstract_text,
         "sentences": sentences
     }
+
+def exists(obj, chain):
+    _key = chain.pop(0)
+    if _key in obj:
+        return exists(obj[_key], chain) if chain else obj[_key]

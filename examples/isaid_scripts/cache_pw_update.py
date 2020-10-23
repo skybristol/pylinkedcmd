@@ -54,25 +54,16 @@ if last_x_days > 0:
             ) for pw_item in tqdm.tqdm(modified_records)
         )
 
-        urls_for_query = str(
-            [
-                i["url"] for i in summarization["assets"]
-            ]).replace('"', "'").replace("[", "(").replace("]", ")")
-
-        delete_statements = [
-            f"DELETE FROM assets WHERE url in {urls_for_query}",
-            f"DELETE FROM claims WHERE reference in {urls_for_query}",
-            f"DELETE FROM links WHERE url in {urls_for_query}",
-            f"DELETE FROM sentences WHERE url in {urls_for_query}",
-            f"DELETE FROM contacts WHERE url in {urls_for_query}",
-        ]
-
-        with pg_engine.connect() as con:
-            for statement in delete_statements:
-                rs = con.execute(statement)
-
         for k, v in summarization.items():
             if len(v) > 0:
+                urls_for_query = str(
+                    [
+                        i["url"] for i in v
+                    ]).replace('"', "'").replace("[", "(").replace("]", ")")
+
+                with pg_engine.connect() as con:
+                    rs = con.execute(f"DELETE FROM {k} WHERE url in {urls_for_query}")
+
                 pd.DataFrame(v).to_sql(
                     k,
                     pg_engine,
