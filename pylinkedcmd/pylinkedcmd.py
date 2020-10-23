@@ -1753,6 +1753,10 @@ class Isaid:
                 note
                 organization_name
                 organization_uri
+                organization_url
+                region
+                usgs_mission_areas
+                usgs_programs
                 personaltitle
                 professionalqualifier
                 state
