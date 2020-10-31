@@ -15,6 +15,7 @@ import pandas as pd
 import math
 from nltk.tokenize import sent_tokenize
 from copy import deepcopy
+from jsonbender import bend, K, S, F, OptionalS
 
 
 class Sciencebase:
@@ -29,6 +30,30 @@ class Sciencebase:
             "ASK USGS -- Water Webserver Team",
             "U.S. Geological Survey - ScienceBase"
         ]
+        self.cmd_isaid = Isaid()
+        self.org_mapping = {
+        'identifier': S('links', 0, 'url'),
+        'name': S('name'),
+        'url': OptionalS('url'),
+        'alternateName': OptionalS('aliases', 0, 'name'),
+        'addressLocality': OptionalS('primaryLocation', 'streetAddress', 'city'),
+        'addressRegion': OptionalS('primaryLocation', 'streetAddress', 'state'),
+        'region': OptionalS('extensions', 'usgsOrganization', 'region'),
+        'usgsMissionAreas': F(
+            lambda source: 
+            [k["displayText"] for k 
+                in source["extensions"]["usgsOrganization"]["usgsMissionAreas"]
+            ] if exists(source, ["extensions","usgsOrganization","usgsMissionAreas"])
+            else None
+        ),
+        'usgsPrograms': F(
+            lambda source: 
+            [k["displayText"] for k 
+                in source["extensions"]["usgsOrganization"]["usgsPrograms"]
+            ] if exists(source, ["extensions","usgsOrganization","usgsPrograms"])
+            else None
+        )
+    }
 
     def summarize_sb_person(self, person_doc):
         ignore_props = [
@@ -103,6 +128,21 @@ class Sciencebase:
                 sb_dir_next_link = r["nextlink"]["url"]
             else:
                 break
+
+        if return_format == "summarized":
+            return [self.summarize_sb_person(i) for i in sb_dir_results]
+
+        return sb_dir_results
+
+    def get_staff_by_email(self, email_list, return_format="summarized"):
+        sb_dir_results = list()
+
+        for email in email_list:
+            if validators.email(email):
+                query = f"https://www.sciencebase.gov/directory/people?format=json&email={email}"
+                r = requests.get(query).json()
+                if len(r["people"]) > 0:
+                    sb_dir_results.extend(r["people"])
 
         if return_format == "summarized":
             return [self.summarize_sb_person(i) for i in sb_dir_results]
@@ -456,7 +496,7 @@ class Sciencebase:
                                                          and t["type"] not in ["Harvest Set"]
                 ]:
                     tag_contact = deepcopy(contact_record)
-                    tag_contact["property_label"] = "data release metadata tag"
+                    tag_contact["property_label"] = "keyword"
                     tag_contact["object_instance_of"] = "data descriptor"
                     tag_contact["object_label"] = tag["name"]
                     tag_contact["object_qualifier"] = ":".join([v for k, v in tag.items() if k != "name"])
@@ -465,7 +505,11 @@ class Sciencebase:
             for coauthor_name in [i for i in unique_contact_names if i != contact["name"]]:
                 coauthor = next((i for i in sb_catalog_doc["contacts"] if i["name"] == coauthor_name), None)
                 coauthor_contact = deepcopy(contact_record)
-                coauthor_contact["property_label"] = "data release co-developer"
+                coauthor_contact["property_label"] = "coauthor"
+                if "type" in coauthor.keys():
+                    coauthor_contact["object_qualifier"] = coauthor["type"]
+                else:
+                    coauthor_contact["object_qualifier"] = "data item co-listed contact"
                 coauthor_contact["object_instance_of"] = "person"
                 coauthor_contact["object_label"] = coauthor["name"]
 
@@ -487,7 +531,7 @@ class Sciencebase:
                    and i["name"] not in self.ignore_org_names
             ]:
                 organization_contact = deepcopy(contact_record)
-                organization_contact["property_label"] = "organization data release affiliation"
+                organization_contact["property_label"] = "organization affiliation"
                 organization_contact["object_instance_of"] = "organization"
                 organization_contact["object_label"] = org["name"]
                 if "oldPartyId" in org.keys():
@@ -608,6 +652,24 @@ class Sciencebase:
             "claims": self.catalog_item_claims(sb_catalog_doc=sb_catalog_doc),
             "links": links
         }
+
+    def get_sb_org(self, identifier, map_it=True):
+        if not validators.url(identifier):
+            try:
+                oldPartyId = int(identifier)
+                identifier = f"{self.sb_directory_org_api}/{str(oldPartyId)}"
+            except:
+                return None
+
+        r = requests.get(identifier, headers={"accept": "application/json"})
+        
+        if r.status_code != 200:
+            return None
+        
+        if map_it:
+            return bend(self.org_mapping, r.json())
+        else:
+            return r.json()
 
 
 class Wikidata:
@@ -1301,7 +1363,8 @@ class Pw:
 
             for cost_center in cost_centers:
                 cost_center_claim = deepcopy(author_claim)
-                cost_center_claim["property_label"] = "USGS Cost Center association from publication"
+                cost_center_claim["property_label"] = "organization affiliation"
+                cost_center_claim["object_qualifier"] = "USGS Cost Center association from publication"
                 cost_center_claim["object_instance_of"] = "organization"
                 cost_center_claim["object_label"] = cost_center["text"]
                 claims.append(cost_center_claim)
@@ -1588,7 +1651,7 @@ class Isaid:
 
         q = '''
         {
-            people %(where_clause)s {
+            directory %(where_clause)s {
                 identifier_sbid
                 identifier_email
                 identifier_orcid
@@ -1603,7 +1666,7 @@ class Isaid:
         if "errors" in query_response.keys():
             return query_response
         else:
-            return [i["identifier_sbid"] for i in query_response["data"]["people"]]
+            return query_response["data"]["directory"]
 
     def people_by_org(self, organization_name, response="email_list"):
         where_clause = '''
@@ -1690,6 +1753,10 @@ class Isaid:
                 note
                 organization_name
                 organization_uri
+                organization_url
+                region
+                usgs_mission_areas
+                usgs_programs
                 personaltitle
                 professionalqualifier
                 state
@@ -1729,6 +1796,14 @@ class Isaid:
                 reference
                 subject_instance_of
                 subject_label
+                subject_identifier_email
+                subject_identifier_orcid
+                subject_identifier_sbid
+                subject_identifier_wikidata
+                object_identifier_email
+                object_identifier_orcid
+                object_identifier_sbid
+                object_identifier_wikidata
             }
         ''' % {"where_clause": where_clause.replace("identifier_", "subject_identifier_")}
 
@@ -1777,16 +1852,12 @@ class Isaid:
         if "errors" in query_response.keys():
             return query_response
         else:
-            dataset = dict()
-            for k, v in query_response["data"].items():
-                dataset[self.isaid_data_collections[k]["title"]] = v
-                #query_response["data"][self.isaid_data_collections[k]["title"]] = query_response["data"].pop(k)
             return query_response["data"]
 
     def get_organizations(self):
         q_orgs = '''
             {
-              directory (distinct_on: organization_uri) {
+              directory (distinct_on: organization_uri, where: {organization_uri: {_is_null: false}}) {
                 organization_name
                 organization_uri
               }
@@ -1827,3 +1898,8 @@ def process_abstract(abstract, source_url, title=None, parse_sentences=False):
         "abstract": abstract_text,
         "sentences": sentences
     }
+
+def exists(obj, chain):
+    _key = chain.pop(0)
+    if _key in obj:
+        return exists(obj[_key], chain) if chain else obj[_key]

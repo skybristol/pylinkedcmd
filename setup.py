@@ -18,7 +18,8 @@ requirements = [
     'validators',
     'pydash',
     'beautifulsoup4',
-    'nltk'
+    'nltk',
+    'jsonbender'
 ]
 
 setup_requirements = [ ]
