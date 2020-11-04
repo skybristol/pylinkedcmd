@@ -7,7 +7,7 @@ import os
 cmd_sb = pylinkedcmd.pylinkedcmd.Sciencebase()
 
 #usgs_staff = cmd_sb.get_active_usgs_staff()
-usgs_staff = cmd_sb.get_staff_by_email(["mtmartin@usgs.gov","meaton@usgs.gov"])
+usgs_staff = cmd_sb.get_staff_by_email(['dprosser@usgs.gov', 'rcadjew@usgs.gov', 'kcasey@usgs.gov', 'jccole@usgs.gov'])
 
 sbid_list_for_query = str([i["identifier_sbid"]
                            for i in usgs_staff]).replace('"', "'").replace("[", "(").replace("]", ")")

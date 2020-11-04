@@ -604,25 +604,35 @@ class Sciencebase:
 
         summarized_record["url"] = sb_catalog_doc["link"]["url"]
         summarized_record["name"] = sb_catalog_doc["title"]
-        summarized_record["datecreated"] = datetime.utcnow().isoformat()
-        # Revisit publisher
-        summarized_record["publisher"] = "USGS"
+        summarized_record["publisher"] = next((
+            c["name"] for c in sb_catalog_doc["contacts"] if "type" in c and c["type"] == "Publisher"
+        ), "U.S. Geological Survey")
+
+        summarized_record["datecreated"] = next((
+            d["dateString"] for d in sb_catalog_doc["dates"] if d["type"] == "dateCreated"
+        ), datetime.utcnow().isoformat())
+
+        summarized_record["datemodified"] = next((
+            d["dateString"] for d in sb_catalog_doc["dates"] if d["type"] == "lastUpdated"
+        ), summarized_record["datecreated"])
 
         summarized_record["datepublished"] = next((
             d["dateString"] for d in sb_catalog_doc["dates"] if d["type"] == "Publication"
         ), summarized_record["datecreated"])
 
-        if "systemTypes" in sb_catalog_doc.keys() and "Data Release" in sb_catalog_doc["systemTypes"]:
-            summarized_record["additionaltype"] = "USGS Data Release"
+        if "isaid_type" in sb_catalog_doc.keys():
+            summarized_record["additionaltype"] = sb_catalog_doc["isaid_type"]
         else:
-            # Revisit type classification
             summarized_record["additionaltype"] = "ScienceBase Catalog Item"
 
-        summarized_record["identifier"] = next(
-            (
-                i["key"] for i in sb_catalog_doc["identifiers"]
-                if "identifiers" in sb_catalog_doc.keys() and i["type"] == "DOI"
-            ), None)
+        if "identifiers" in sb_catalog_doc:
+            summarized_record["identifier"] = next(
+                (
+                    i["key"] for i in sb_catalog_doc["identifiers"]
+                    if "type" in i and i["type"] == "DOI"
+                ), None)
+        else:
+            summarized_record["identifier"] = summarized_record["url"]
 
         record_sentences = list()
         if "body" in sb_catalog_doc.keys():
