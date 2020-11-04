@@ -1,5 +1,6 @@
 import requests
 from datetime import datetime
+import dateutil
 from sciencebasepy import SbSession
 import validators
 from fuzzywuzzy import fuzz
@@ -1414,7 +1415,16 @@ class Pw:
         summarized_record = dict()
 
         summarized_record["url"] = f"{self.publication_api}/{pw_record['text'].split('-')[0].strip()}"
-        summarized_record["datepublished"] = pw_record["publicationYear"]
+
+        summarized_record["datepublished"] = None
+        if "publicationYear" in pw_record:
+            summarized_record["datepublished"] = pw_record["publicationYear"]
+        elif "displayToPublicDate" in pw_record:
+            try:
+                summarized_record["datepublished"] = datetime.strftime(dateutil.parser.parse(pw_record["displayToPublicDate"], '%Y'))
+            except:
+                pass
+
         summarized_record["name"] = pw_record["title"]
         summarized_record["datemodified"] = pw_record["lastModifiedDate"]
         summarized_record["datecreated"] = datetime.utcnow().isoformat()
@@ -1622,16 +1632,20 @@ class Isaid:
 
         return where_criteria
 
-    def execute_query(self, query):
+    def execute_query(self, query, api=None):
         '''
         Executed query against GraphQL end point
         :param query: GraphQL formatted query statement
         :return: GraphQL response
         '''
+        if api is None:
+            api = self.isaid_api
+
         r = requests.post(
-            self.isaid_api,
+            api,
             json={"query": query},
-            headers=self.api_headers
+            headers=self.api_headers,
+            verify=False
         )
 
         if r.status_code != 200:
