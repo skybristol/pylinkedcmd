@@ -135,15 +135,25 @@ class Sciencebase:
 
         return sb_dir_results
 
-    def get_staff_by_email(self, email_list, return_format="summarized"):
+    def get_staff_by_email(self, email_list, return_format="summarized", use_auth_search=False):
+        if use_auth_search:
+            try:
+                sb = SbSession()
+                sb.login(input("User Name: "), getpass("Password: "))
+            except Exception as e:
+                raise ValueError(f"Something went wrong in trying to authenticate to ScienceBase: {e}")
+
         sb_dir_results = list()
 
         for email in email_list:
             if validators.email(email):
                 query = f"https://www.sciencebase.gov/directory/people?format=json&email={email}"
-                r = requests.get(query).json()
-                if len(r["people"]) > 0:
-                    sb_dir_results.extend(r["people"])
+                if use_auth_search:
+                    r = sb._session.get(query).json()
+                else:
+                    r = requests.get(query).json()
+
+                sb_dir_results.extend(r["people"])
 
         if return_format == "summarized":
             return [self.summarize_sb_person(i) for i in sb_dir_results]
@@ -275,7 +285,7 @@ class Sciencebase:
 
             try:
                 sb = SbSession()
-                sb.login(input("User Name: "), getpass())
+                sb.login(input("User Name: "), getpass("Password: "))
             except Exception as e:
                 raise ValueError(f"Something went wrong in trying to authenticate to ScienceBase: {e}")
 
