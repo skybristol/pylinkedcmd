@@ -33,28 +33,28 @@ class Sciencebase:
         ]
         self.cmd_isaid = Isaid()
         self.org_mapping = {
-        'identifier': S('links', 0, 'url'),
-        'name': S('name'),
-        'url': OptionalS('url'),
-        'alternateName': OptionalS('aliases', 0, 'name'),
-        'addressLocality': OptionalS('primaryLocation', 'streetAddress', 'city'),
-        'addressRegion': OptionalS('primaryLocation', 'streetAddress', 'state'),
-        'region': OptionalS('extensions', 'usgsOrganization', 'region'),
-        'usgsMissionAreas': F(
-            lambda source: 
-            [k["displayText"] for k 
-                in source["extensions"]["usgsOrganization"]["usgsMissionAreas"]
-            ] if exists(source, ["extensions","usgsOrganization","usgsMissionAreas"])
-            else None
-        ),
-        'usgsPrograms': F(
-            lambda source: 
-            [k["displayText"] for k 
-                in source["extensions"]["usgsOrganization"]["usgsPrograms"]
-            ] if exists(source, ["extensions","usgsOrganization","usgsPrograms"])
-            else None
-        )
-    }
+            'identifier': S('links', 0, 'url'),
+            'name': S('name'),
+            'url': OptionalS('url'),
+            'alternateName': OptionalS('aliases', 0, 'name'),
+            'addressLocality': OptionalS('primaryLocation', 'streetAddress', 'city'),
+            'addressRegion': OptionalS('primaryLocation', 'streetAddress', 'state'),
+            'region': OptionalS('extensions', 'usgsOrganization', 'region'),
+            'usgsMissionAreas': F(
+                lambda source: 
+                [k["displayText"] for k 
+                    in source["extensions"]["usgsOrganization"]["usgsMissionAreas"]
+                ] if exists(source, ["extensions","usgsOrganization","usgsMissionAreas"])
+                else None
+            ),
+            'usgsPrograms': F(
+                lambda source: 
+                [k["displayText"] for k 
+                    in source["extensions"]["usgsOrganization"]["usgsPrograms"]
+                ] if exists(source, ["extensions","usgsOrganization","usgsPrograms"])
+                else None
+            )
+        }
 
     def summarize_sb_person(self, person_doc):
         ignore_props = [
