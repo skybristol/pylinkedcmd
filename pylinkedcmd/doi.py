@@ -5,11 +5,13 @@ from datetime import datetime
 from jsonbender import bend, K, S, F, OptionalS
 import json
 from copy import deepcopy
+from . import pylinkedcmd
 
 
 class Lookup:
     def __init__(
-        self, doi, 
+        self, 
+        doi, 
         source_doc=None, 
         output_format="summary", 
         include_source=False, 
@@ -25,11 +27,11 @@ class Lookup:
             'identifiers': F(
                 lambda source:
                 {'doi': source['DOI'], 'url': source['URL']} if "DOI" in source and "URL" in source else
-                {'doi': self.get_id()[0], 'url': self.get_id()[1]}
+                pylinkedcmd.actionable_id(self.doi)
             ),
             'entity_created': datetime.utcnow().isoformat(),
             'entity_source': 'DOI Metadata',
-            'reference': self.get_id()[1],
+            'reference': pylinkedcmd.actionable_id(self.doi)["url"],
             'instance_of': F(
                 lambda source:
                 source['type'] if "type" in source else
@@ -59,21 +61,6 @@ class Lookup:
             )
         }
 
-    def get_id(self):
-        if self.doi.lower().startswith("http"):
-            parsed_url = urlparse(self.doi)
-            remove_this = f"{parsed_url.scheme}://{parsed_url.netloc}/"
-            doi_string = self.doi[len(remove_this):]
-            doi_url = self.doi
-        else:
-            doi_string = self.doi
-            doi_url = f"https://doi.org/{self.doi}"
-
-        if not character_balance(doi_url):
-            doi_url = f"{doi_url})"
-
-        return doi_string, doi_url
-
     def get_data(self, doi_url):
         if self.source_doc is not None:
             return self.source_doc
@@ -90,15 +77,15 @@ class Lookup:
             return raw_doc
 
     def document(self):
-        doi_string, doi_url = self.get_id()
+        identifiers = pylinkedcmd.actionable_id(self.doi)
 
-        if doi_string is None:
+        if identifiers is None:
             if self.return_errors:
                 return {"doi": self.doi, "error": "Not a valid DOI identifier"}
             else:
                 return None
 
-        raw_doc = self.get_data(doi_url=doi_url)
+        raw_doc = self.get_data(doi_url=identifiers["url"])
         if "error" in raw_doc:
             if self.return_errors:
                 return raw_doc
@@ -113,7 +100,7 @@ class Lookup:
             if "DOI" in raw_doc:
                 try:
                     r_citation = requests.get(
-                        self.get_id()[1], 
+                        identifiers["url"], 
                         headers={"accept": "text/x-bibliography"}
                     )
                     if r_citation.status_code == 200:
@@ -125,10 +112,7 @@ class Lookup:
 
         elif self.output_format == "cache":
             cache_document = {
-                "identifiers": {
-                    "doi": self.get_id()[0],
-                    "url": self.get_id()[1]
-                },
+                "identifiers": identifiers,
                 "source": raw_doc
             }
             
