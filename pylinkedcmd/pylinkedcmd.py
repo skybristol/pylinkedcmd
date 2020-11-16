@@ -1251,10 +1251,11 @@ class UsgsWeb:
 
         claim_root = {
             "claim_created": datetime.utcnow().isoformat(),
-            "claim_source": "USGS Profile Page Expertise",
+            "claim_source": "USGS Profile Page",
             "reference": page_url,
             "date_qualifier": datetime.utcnow().isoformat(),
             "subject_instance_of": "person",
+            "subject_identifiers": dict(),
             "property_label": "expertise",
             "object_instance_of": "professional expertise",
             "object_qualifier": "subject personal assertion"
@@ -1264,12 +1265,12 @@ class UsgsWeb:
             claim_root["subject_label"] = profile_page_data["display_name"]
 
         if profile_page_data["email"] is not None:
-            claim_root["subject_email"] = profile_page_data["email"]
+            claim_root["subject_identifiers"]["email"] = profile_page_data["email"]
 
         if profile_page_data["orcid"] is not None:
-            claim_root["subject_orcid"] = profile_page_data["orcid"]
+            claim_root["subject_identifiers"]["orcid"] = profile_page_data["orcid"]
 
-        if any(k in claim_root.keys() for k in ["subject_label", "subject_email", "subject_orcid"]):
+        if any(k in claim_root["subject_identifiers"].keys() for k in ["subject_email", "subject_orcid"]):
             for expertise_term in profile_page_data["expertise"]:
                 expertise_claim = deepcopy(claim_root)
                 expertise_claim["object_label"] = expertise_term
