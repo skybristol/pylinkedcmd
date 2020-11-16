@@ -1233,7 +1233,9 @@ class UsgsWeb:
 
         orcid_link = soup.find("a", href=self.orcid_link_pattern)
         if orcid_link is not None:
-            profile_page_data["orcid"] = orcid_link.text.split("/")[-1]
+            check_id = actionable_id(orcid_link.text)
+            if check_id is not None and "orcid" in check_id:
+                profile_page_data["orcid"] = check_id["orcid"]
 
         other_pubs_container = soup.find(
             "div",
@@ -1955,7 +1957,7 @@ def actionable_id(identifier_string):
         if search:
             d_identifier = {
                 k: search.group(),
-                "url": f"{v['resolver']}{search.group()}"
+                "url": f"{v['resolver']}{search.group().upper()}"
             }
             return d_identifier
 

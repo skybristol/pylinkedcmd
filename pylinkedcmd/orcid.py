@@ -66,6 +66,8 @@ class Lookup:
             except Exception as e:
                 if self.return_errors:
                     return {"orcid": self.orcid, "error": e}
+                else:
+                    return None
         else:
             raw_doc = self.orcid_doc
 
