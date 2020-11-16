@@ -1218,7 +1218,11 @@ class UsgsWeb:
         if email_container is not None:
             email_link = email_container.find("a", href=self.mailto_link_pattern)
             if email_link is not None:
-                profile_page_data["email"] = email_link.text
+                email_string = email_link.text.lower().strip()
+                if validators.email(email_string):
+                    profile_page_data["email"] = email_string
+                else:
+                    profile_page_data["email"] = None
 
         organization_container = soup.find("h3", class_="staff-profile-subtitle h4")
         if organization_container is not None:

@@ -19,7 +19,8 @@ requirements = [
     'pydash',
     'beautifulsoup4',
     'nltk',
-    'jsonbender'
+    'jsonbender',
+    'Unidecode'
 ]
 
 setup_requirements = [ ]
