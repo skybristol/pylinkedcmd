@@ -18,7 +18,8 @@ class Lookup:
         self.mapping = {
             'identifiers': F(
                 lambda source:
-                pylinkedcmd.actionable_id(source['@id'])
+                pylinkedcmd.actionable_id(source['@id']) if "@id" in source else
+                None
             ),
             'instance_of': S('@type'),
             'entity_created': datetime.utcnow().isoformat(),
@@ -93,7 +94,7 @@ class Lookup:
                     for item in creative_works:
                         item_claim = deepcopy(claim_constants)
                         item_data = bend(self.mapping, item)
-                        item_claim["object_identifier"] = item_data["identifiers"]
+                        item_claim["object_identifiers"] = item_data["identifiers"]
                         item_claim["object_instance_of"] = "CreativeWork"
                         item_claim["object_label"] = item_data["name"]
                         item_claim["property_label"] = "author of"
@@ -108,14 +109,14 @@ class Lookup:
                         item_data = bend(self.mapping, item)
 
                         item_claim = deepcopy(claim_constants)
-                        item_claim["object_identifier"] = item_data["identifiers"]
+                        item_claim["object_identifiers"] = item_data["identifiers"]
                         item_claim["object_instance_of"] = "Organization"
                         item_claim["object_label"] = item_data["name"]
                         item_claim["property_label"] = "funding organization"
                         person_entity["claims"].append(item_claim)
 
                         item_claim = deepcopy(claim_constants)
-                        item_claim["object_identifier"] = item_data["identifiers"]
+                        item_claim["object_identifiers"] = item_data["identifiers"]
                         item_claim["object_instance_of"] = "Project"
                         item_claim["object_label"] = item_data["alternateName"]
                         item_claim["property_label"] = "funded project"
@@ -129,7 +130,7 @@ class Lookup:
                 for item in affiliations:
                     item_data = bend(self.mapping, item)
                     item_claim = deepcopy(claim_constants)
-                    item_claim["object_identifier"] = item_data["identifiers"]
+                    item_claim["object_identifiers"] = item_data["identifiers"]
                     item_claim["object_instance_of"] = "Organization"
                     item_claim["object_label"] = item_data["name"]
                     item_claim["property_label"] = "organization affiliation"
@@ -148,7 +149,7 @@ class Lookup:
                         object_label = item_data["name"]
 
                     item_claim = deepcopy(claim_constants)
-                    item_claim["object_identifier"] = item_data["identifiers"]
+                    item_claim["object_identifiers"] = item_data["identifiers"]
                     item_claim["object_instance_of"] = "Organization"
                     item_claim["object_label"] = object_label
                     item_claim["property_label"] = "educational affiliation"
