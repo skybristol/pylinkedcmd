@@ -456,7 +456,7 @@ class Sciencebase:
             "claim_source": "ScienceBase Catalog",
             "reference": sb_catalog_doc["link"]["url"],
             "date_qualifier": date_qualifier,
-            "subject_instance_of": "person"
+            "subject_instance_of": "Person"
         }
 
         unique_contact_names = list(set([
@@ -1260,7 +1260,7 @@ class UsgsWeb:
             "claim_source": "USGS Profile Page",
             "reference": page_url,
             "date_qualifier": datetime.utcnow().isoformat(),
-            "subject_instance_of": "person",
+            "subject_instance_of": "Person",
             "subject_identifiers": dict(),
             "property_label": "expertise",
             "object_instance_of": "professional expertise",
@@ -1355,7 +1355,7 @@ class Pw:
 
         for author in pw_authors:
             author_claim = deepcopy(claim_root)
-            author_claim["subject_instance_of"] = "person"
+            author_claim["subject_instance_of"] = "Person"
             author_claim["subject_label"] = author["text"]
 
             if "email" in author.keys():

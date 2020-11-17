@@ -8,6 +8,8 @@ from . import pylinkedcmd
 from . import orcid
 from . import doi
 from . import dbase
+from . import sciencebase
+from . import usgsweb
 
 
 
