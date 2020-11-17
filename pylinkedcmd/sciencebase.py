@@ -64,6 +64,11 @@ class Directory:
         if not unique and verifier_operator is not None and verifier_criteria is not None:
             return next((i for i in sb_results["people"] if verifier_operator in i and i[verifier_operator] == verifier_criteria), None)
 
+        if unique and len(sb_results["people"]) > 1:
+            list_active = [i for i in sb_results["people"] if i["active"]]
+            if len(list_active) == 1:
+                return list_active[0]
+
         if not unique and len(sb_results["people"]) > 1:
             return sb_results["people"]
 
