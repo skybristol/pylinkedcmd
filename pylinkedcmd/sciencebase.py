@@ -4,12 +4,18 @@ import validators
 from datetime import datetime
 from copy import copy
 import unidecode
+from getpass import getpass
 
 class Directory:
-    def __init__(self):
+    def __init__(self, authenticated=False):
+        self.authenticated = authenticated
         self.sb_root_url = "https://www.sciencebase.gov/directory/people?format=json"
         self.sb_org_root = "https://www.sciencebase.gov/directory/organization/"
         self.sb_person_root = "https://www.sciencebase.gov/directory/person/"
+
+        if authenticated:
+            self.sb = SbSession()
+            self.sb.login(input("User Name: "), getpass("Password: "))
 
     def lookup_person(
         self, 
@@ -32,7 +38,10 @@ class Directory:
         query_url = f"{self.sb_root_url}&{q_operator}={criteria}"
 
         try:
-            sb_results = requests.get(query_url).json()
+            if self.authenticated:
+                sb_results = self.sb._session.get(query_url).json()
+            else:
+                sb_results = requests.get(query_url).json()
         except:
             return None
 
@@ -40,7 +49,10 @@ class Directory:
             name_criteria = criteria.split()[-1]
             query_url = f"{self.sb_root_url}&lastName={name_criteria}"
             try:
-                sb_results = requests.get(query_url).json()
+                if self.authenticated:
+                    sb_results = self.sb._session.get(query_url).json()
+                else:
+                    sb_results = requests.get(query_url).json()
             except:
                 return None
         elif len(sb_results["people"]) == 0 and not attempt_last_name:
