@@ -9,11 +9,12 @@ from . import pylinkedcmd
 
 
 class Lookup:
-    def __init__(self, orcid, orcid_doc=None, summarize=True, return_errors=False):
+    def __init__(self, orcid, orcid_doc=None, summarize=True, return_errors=False, include_source=False):
         self.orcid = orcid
         self.orcid_doc = orcid_doc
         self.summarize = summarize
         self.return_errors = return_errors
+        self.include_source = include_source
         self.orcid_headers = {"accept": "application/ld+json"}
         self.mapping = {
             'identifiers': F(
@@ -73,8 +74,9 @@ class Lookup:
 
         if self.summarize:
             person_entity = bend(self.mapping, raw_doc)
-            person_entity["source"] = raw_doc
-            person_entity["claims"] = list()
+            if self.include_source:
+                person_entity["source"] = raw_doc
+            claims = list()
 
             claim_constants = {
                 "claim_created": datetime.utcnow().isoformat(),
@@ -100,7 +102,7 @@ class Lookup:
                         item_claim["object_instance_of"] = "CreativeWork"
                         item_claim["object_label"] = item_data["name"]
                         item_claim["property_label"] = "author of"
-                        person_entity["claims"].append(item_claim)
+                        claims.append(item_claim)
 
                 if "funder" in raw_doc["@reverse"]:
                     if isinstance(raw_doc["@reverse"]["funder"], dict):
@@ -115,14 +117,14 @@ class Lookup:
                         item_claim["object_instance_of"] = "Organization"
                         item_claim["object_label"] = item_data["name"]
                         item_claim["property_label"] = "funding organization"
-                        person_entity["claims"].append(item_claim)
+                        claims.append(item_claim)
 
                         item_claim = deepcopy(claim_constants)
                         item_claim["object_identifiers"] = item_data["identifiers"]
                         item_claim["object_instance_of"] = "Project"
                         item_claim["object_label"] = item_data["alternateName"]
                         item_claim["property_label"] = "funded project"
-                        person_entity["claims"].append(item_claim)
+                        claims.append(item_claim)
 
             if "affiliation" in raw_doc:
                 if isinstance(raw_doc["affiliation"], dict):
@@ -136,7 +138,7 @@ class Lookup:
                     item_claim["object_instance_of"] = "Organization"
                     item_claim["object_label"] = item_data["name"]
                     item_claim["property_label"] = "organization affiliation"
-                    person_entity["claims"].append(item_claim)
+                    claims.append(item_claim)
 
             if "alumniOf" in raw_doc:
                 if isinstance(raw_doc["alumniOf"], dict):
@@ -155,8 +157,11 @@ class Lookup:
                     item_claim["object_instance_of"] = "Organization"
                     item_claim["object_label"] = object_label
                     item_claim["property_label"] = "educational affiliation"
-                    person_entity["claims"].append(item_claim)
+                    claims.append(item_claim)
 
-            return person_entity
+            return {
+                "entity": person_entity,
+                "claims": claims
+            }
         else:
             return raw_doc

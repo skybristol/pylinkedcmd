@@ -106,6 +106,19 @@ class Directory:
         if "orcId" in directory_item:
             identifiers["orcid"] = directory_item["orcId"]
 
+        entity = {
+            "entity_source": "ScienceBase Directory",
+            "entity_created": datetime.utcnow().isoformat(),
+            "reference": directory_item["link"]["href"],
+            "instance_of": 'Person',
+            "identifiers": identifiers,
+            "name": directory_item["displayName"],
+        }
+        if "url" in directory_item and directory_item["url"] is not None:
+            entity["url"] = [directory_item["url"]]
+        if "description" in directory_item and directory_item["description"] is not None:
+            entity["abstract"] = directory_item["description"]
+
         statements_list = list()
 
         claim_constants = {
@@ -148,19 +161,8 @@ class Directory:
             statements_list.append(org_affiliation_statement)
 
         result_doc = {
-            "identifiers": identifiers,
+            "entity": entity,
             "claims": statements_list,
         }
-
-        if build_entity:
-            result_doc["entity_created"] = datetime.utcnow().isoformat()
-            result_doc["entity_source"] = "ScienceBase Directory"
-            result_doc["name"] = directory_item["displayName"]
-            result_doc["reference"] = identifiers["sbid"]
-            result_doc["instance_of"] = "Person"
-            if "url" in directory_item:
-                result_doc["url"] = [directory_item["url"]]
-            if "description" in directory_item:
-                result_doc["abstract"] = directory_item["description"]
 
         return result_doc

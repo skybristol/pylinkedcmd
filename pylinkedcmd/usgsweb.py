@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import math
 from nltk.tokenize import sent_tokenize
-from copy import deepcopy
+from copy import copy
 from jsonbender import bend, K, S, F, OptionalS
 
 from . import pylinkedcmd
@@ -136,7 +136,7 @@ class UsgsWeb:
 
         return person_record
 
-    def scrape_profile(self, page_url):
+    def scrape_profile(self, page_url, inventory_content=None):
         '''
         Unfortunately, there is no current programmatic way of getting at USGS staff profile pages, where at least some
         staff have put significant effort into rounding out their available online information. For some, these pages
@@ -146,12 +146,14 @@ class UsgsWeb:
         for further analysis, pulls out links from the body (which can be compared with other sources), and shoves the
         body text as a whole into the data for further processing.
         :param page_url: URL to the profile page that can be used as a unique key
+        :param inventory_content: Dict containing the content scraped from the inventory of profile pages to be used 
+        in building additional claims
         :return: dictionary containing the url, list of expertise keywords (if available), list of links (text and
         href) values in dictionaries, and the full body html as a string
         '''
         r = requests.get(page_url)
         if r.status_code != 200:
-            return None
+            return {"url": page_url, "error": f"Status-code: {r.status_code}"}
 
         soup = BeautifulSoup(r.content, 'html.parser')
 
@@ -176,7 +178,7 @@ class UsgsWeb:
 
         profile_body_content = soup.find("div", class_="usgs-body")
         if profile_body_content is not None:
-            profile_page_data["scraped_body_html"] = str(profile_body_content)
+            profile_page_data["scraped_body_html"] = profile_body_content.decompose()
             link_list = profile_body_content.findAll("a")
             if link_list is not None:
                 for link in link_list:
@@ -234,36 +236,61 @@ class UsgsWeb:
                 } for l in other_pubs_container.findAll("a")
             ])
 
-        expertise_claims = list()
-
-        claim_root = {
-            "claim_created": datetime.utcnow().isoformat(),
-            "claim_source": "USGS Profile Page",
+        entity_record = {
             "reference": page_url,
-            "date_qualifier": datetime.utcnow().isoformat(),
-            "subject_instance_of": "Person",
-            "subject_identifiers": dict(),
-            "property_label": "expertise",
-            "object_instance_of": "UnlinkedTerm",
-            "object_qualifier": "subject personal assertion"
+            "entity_created": datetime.utcnow().isoformat(),
+            "entity_source": "USGS Profile Page",
+            "instance_of": "Person",
+            "name": profile_page_data["display_name"],
+            "url": [page_url] + [i["link_href"] for i in profile_page_data["body_content_links"]],
+            "identifiers": dict()
         }
-
-        if profile_page_data["display_name"] is not None:
-            claim_root["subject_label"] = profile_page_data["display_name"]
 
         if profile_page_data["email"] is not None:
-            claim_root["subject_identifiers"]["email"] = profile_page_data["email"]
+            entity_record["identifiers"]["email"] = profile_page_data["email"]
 
         if profile_page_data["orcid"] is not None:
-            claim_root["subject_identifiers"]["orcid"] = profile_page_data["orcid"]
+            entity_record["identifiers"]["orcid"] = profile_page_data["orcid"]
 
-        if any(k in claim_root["subject_identifiers"].keys() for k in ["subject_email", "subject_orcid"]):
+        if any(k in entity_record["identifiers"].keys() for k in ["email", "orcid"]):
+            claims = list()
+            claim_root = {
+                "claim_created": datetime.utcnow().isoformat(),
+                "claim_source": "USGS Profile Page",
+                "reference": page_url,
+                "date_qualifier": datetime.utcnow().isoformat(),
+                "subject_instance_of": "Person",
+                "subject_identifiers": entity_record["identifiers"],
+                "subject_label": profile_page_data["display_name"]
+            }
+
             for expertise_term in profile_page_data["expertise"]:
-                expertise_claim = deepcopy(claim_root)
+                expertise_claim = copy(claim_root)
+                expertise_claim["property_label"] = "expertise"
+                expertise_claim["object_instance_of"] = "UnlinkedTerm"
+                expertise_claim["object_qualifier"] = "subject personal assertion"
                 expertise_claim["object_label"] = expertise_term
-                expertise_claims.append(expertise_claim)
+                claims.append(expertise_claim)
+        
+            if profile_page_data["organization_name"] is not None:
+                org_affiliation_claim = copy(claim_root)
+                org_affiliation_claim["property_label"] = "organization affiliation"
+                org_affiliation_claim["object_instance_of"] = "Organization"
+                org_affiliation_claim["object_label"] = profile_page_data["organization_name"]
+                if profile_page_data["organization_link"] is not None:
+                    org_affiliation_claim["object_identifiers"] = {"url": profile_page_data["organization_link"]}
+                claims.append(org_affiliation_claim)
 
-        return {
-            "summary": profile_page_data,
-            "claims": expertise_claims
-        }
+            if inventory_content is not None and "title" in inventory_content:
+                job_title_claim = copy(claim_root)
+                job_title_claim["property_label"] = "job title"
+                job_title_claim["object_instance_of"] = "FieldOfWork"
+                job_title_claim["object_label"] = inventory_content["title"]
+                claims.append(job_title_claim)
+
+            return {
+                "entity": entity_record,
+                "claims": claims
+            }
+        else:
+            return profile_page_data
