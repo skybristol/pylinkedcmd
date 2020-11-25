@@ -58,6 +58,11 @@ class Lookup:
                 source["abstract"] if "abstract" in source else
                 source["body"] if "body" in source else
                 None
+            ),
+            'subject': F(
+                lambda source:
+                source['subject'] if "subject" in source else
+                None
             )
         }
 

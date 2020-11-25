@@ -2,9 +2,11 @@ from sciencebasepy import SbSession
 import requests
 import validators
 from datetime import datetime
+import dateutil
 from copy import copy
 import unidecode
 from getpass import getpass
+import pandas as pd
 
 class Directory:
     def __init__(self, authenticated=False):
@@ -119,6 +121,13 @@ class Directory:
         if "description" in directory_item and directory_item["description"] is not None:
             entity["abstract"] = directory_item["description"]
 
+        if self.authenticated:
+            self.sb._session.headers.update({'Accept': 'text/html'})
+            r = self.sb._session.get(identifiers["sbid"])
+            tables = pd.read_html(r.text)
+            entity["last_updated"] = dateutil.parser.parse(tables[0].loc[tables[0][0] == "Last Updated"][1].values[0])
+            entity["last_updated_by"] = tables[0].loc[tables[0][0] == "Last Updated By"][1].values[0]
+
         statements_list = list()
 
         claim_constants = {
@@ -129,13 +138,17 @@ class Directory:
             "subject_label": directory_item["displayName"],
             "subject_identifiers": identifiers
         }
+        if "last_updated" in entity:
+            claim_constants["date_qualifier"] = entity["last_updated"]
+        else:
+            claim_constants["date_qualifier"] = datetime.utcnow().isoformat()
+
 
         if "jobTitle" in directory_item:
             job_title_statement = copy(claim_constants)
             job_title_statement["property_label"] = "job title"
             job_title_statement["object_instance_of"] = "FieldOfWork"
             job_title_statement["object_label"] = directory_item["jobTitle"].title()
-            job_title_statement["date_qualifier"] = datetime.utcnow().isoformat()
             job_title_statement["object_identifiers"] = None
             job_title_statement["object_qualifier"] = None
             statements_list.append(job_title_statement)
@@ -145,7 +158,6 @@ class Directory:
             org_affiliation_statement["property_label"] = "organization affiliation"
             org_affiliation_statement["object_instance_of"] = "Organization"
             org_affiliation_statement["object_label"] = directory_item["organization"]["displayText"].title()
-            org_affiliation_statement["date_qualifier"] = datetime.utcnow().isoformat()
             org_affiliation_statement["object_identifiers"] = {
                 "sbid": f"{self.sb_org_root}{directory_item['organization']['id']}"
             }
@@ -158,6 +170,13 @@ class Directory:
                     org_affiliation_statement["object_qualifier"] = "Current active employee as of date_qualifier"
                 else:
                     org_affiliation_statement["object_qualifier"] = "No longer an active employee"
+
+                    inactive_employee_statement = copy(claim_constants)
+                    inactive_employee_statement["property_label"] = "group affiliation"
+                    inactive_employee_statement["object_instance_of"] = "Group"
+                    inactive_employee_statement["object_label"] = "Inactive User Account"
+                    statements_list.append(inactive_employee_statement)
+
             statements_list.append(org_affiliation_statement)
 
         result_doc = {
