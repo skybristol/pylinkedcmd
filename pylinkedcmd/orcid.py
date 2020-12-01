@@ -75,6 +75,10 @@ class Lookup:
 
         if self.summarize:
             person_entity = bend(self.mapping, raw_doc)
+
+            if person_entity["name"] is None:
+                return {"orcid": self.orcid, "error": "A name for the person could not be determined"}
+
             if self.include_source:
                 person_entity["source"] = raw_doc
             claims = list()
