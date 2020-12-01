@@ -7,6 +7,8 @@ from copy import copy
 import unidecode
 from getpass import getpass
 import pandas as pd
+import re
+import hashlib
 
 class Directory:
     def __init__(self, authenticated=False):
@@ -14,6 +16,7 @@ class Directory:
         self.sb_root_url = "https://www.sciencebase.gov/directory/people?format=json"
         self.sb_org_root = "https://www.sciencebase.gov/directory/organization/"
         self.sb_person_root = "https://www.sciencebase.gov/directory/person/"
+        self.orcid_pattern = r"\d{4}-\d{4}-\d{4}-\w{4}"
 
         if authenticated:
             self.sb = SbSession()
@@ -27,10 +30,14 @@ class Directory:
         verifier_criteria=None, 
         attempt_last_name=True
     ):
-        q_operator = "q"
         if validators.email(criteria):
             q_operator = "email"
+        elif re.search(self.orcid_pattern, criteria):
+            q_operator = "q"
+            verifier_operator = "orcId"
+            verifier_criteria = criteria
         else:
+            q_operator = "q"
             criteria = f"{criteria.split()[0]} {criteria.split()[-1]}"
             criteria = unidecode.unidecode(criteria)
 
@@ -178,6 +185,15 @@ class Directory:
                     statements_list.append(inactive_employee_statement)
 
             statements_list.append(org_affiliation_statement)
+
+        for claim in statements_list:
+            claim["claim_id"] = ":".join([
+                claim["claim_source"],
+                claim["subject_label"],
+                claim["property_label"],
+                claim["object_label"]
+            ])
+            claim["claim_uid"] = hashlib.md5(claim["claim_id"].encode('utf-8')).hexdigest()
 
         result_doc = {
             "entity": entity,
