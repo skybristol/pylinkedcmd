@@ -6,6 +6,7 @@ import validators
 from datetime import datetime
 from copy import deepcopy
 from . import pylinkedcmd
+import hashlib
 
 
 class Lookup:
@@ -158,6 +159,15 @@ class Lookup:
                     item_claim["object_label"] = object_label
                     item_claim["property_label"] = "educational affiliation"
                     claims.append(item_claim)
+
+            for claim in claims:
+                claim["claim_id"] = ":".join([
+                    claim["claim_source"],
+                    claim["subject_label"],
+                    claim["property_label"],
+                    claim["object_label"]
+                ])
+                claim["claim_uid"] = hashlib.md5(claim["claim_id"].encode('utf-8')).hexdigest()
 
             return {
                 "entity": person_entity,

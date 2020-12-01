@@ -97,6 +97,12 @@ class Lookup:
             else:
                 return None
 
+        if len(raw_doc["title"]) == 0:
+            if self.return_errors:
+                return {"doi": self.doi, "error": "Problem in DOI content resolution metadata"}
+            else:
+                return None
+
         if self.output_format == "summary":
             entity = bend(self.mapping, raw_doc)
             if self.include_source:
