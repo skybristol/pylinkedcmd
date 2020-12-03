@@ -1,24 +1,9 @@
 import requests
 from datetime import datetime
-import dateutil
-from sciencebasepy import SbSession
 import validators
-from fuzzywuzzy import fuzz
-import sys
-from SPARQLWrapper import SPARQLWrapper, JSON
-import json
-from getpass import getpass
-import pydash
-import copy
 import re
 from bs4 import BeautifulSoup
-import pandas as pd
-import math
-from nltk.tokenize import sent_tokenize
 from copy import copy
-from jsonbender import bend, K, S, F, OptionalS
-
-from . import pylinkedcmd
 
 
 class UsgsWeb:
