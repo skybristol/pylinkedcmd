@@ -1,8 +1,5 @@
 import requests
-import re
-from urllib.parse import urlparse
 from jsonbender import bend, K, S, F, OptionalS
-import validators
 from datetime import datetime
 from copy import deepcopy
 from . import pylinkedcmd
