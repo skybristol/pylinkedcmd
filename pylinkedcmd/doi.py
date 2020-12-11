@@ -9,13 +9,13 @@ class Lookup:
         self, 
         doi, 
         source_doc=None, 
-        output_format="summary", 
+        summarize=True, 
         include_source=False, 
         return_errors=False
     ):
         self.doi = doi
         self.source_doc = source_doc
-        self.output_format = output_format
+        self.summarize = summarize
         self.include_source = include_source
         self.return_errors = return_errors
         self.headers = {"accept": "application/vnd.citationstyles.csl+json"}
@@ -99,7 +99,7 @@ class Lookup:
             else:
                 return None
 
-        if self.output_format == "summary":
+        if self.summarize:
             entity = bend(self.mapping, raw_doc)
             if self.include_source:
                 entity["source"] = raw_doc
@@ -115,15 +115,14 @@ class Lookup:
                 except:
                     entity["string_representation"] = None
 
-            return entity
+            for k,v in entity["identifiers"].items():
+                entity[f"identifier_{k}"] = v
 
-        elif self.output_format == "cache":
-            cache_document = {
-                "identifiers": identifiers,
-                "source": raw_doc
+            entity = {
+                "entity": entity
             }
-            
-            return cache_document
+
+            return entity
 
         else:
             return raw_doc

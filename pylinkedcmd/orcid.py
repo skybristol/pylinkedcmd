@@ -7,9 +7,9 @@ import hashlib
 
 
 class Lookup:
-    def __init__(self, orcid, orcid_doc=None, summarize=True, return_errors=False, include_source=False):
+    def __init__(self, orcid, source_doc=None, summarize=True, return_errors=False, include_source=False):
         self.orcid = orcid
-        self.orcid_doc = orcid_doc
+        self.source_doc = source_doc
         self.summarize = summarize
         self.return_errors = return_errors
         self.include_source = include_source
@@ -52,7 +52,7 @@ class Lookup:
             else:
                 return None
         
-        if self.orcid_doc is None:
+        if self.source_doc is None:
             try:
                 r = requests.get(identifiers["url"], headers=self.orcid_headers)
                 if r.status_code != 200:
@@ -68,7 +68,7 @@ class Lookup:
                 else:
                     return None
         else:
-            raw_doc = self.orcid_doc
+            raw_doc = self.source_doc
 
         if self.summarize:
             person_entity = bend(self.mapping, raw_doc)
@@ -169,6 +169,17 @@ class Lookup:
                     claim["object_label"]
                 ])
                 claim["claim_uid"] = hashlib.md5(claim["claim_id"].encode('utf-8')).hexdigest()
+
+            for k,v in person_entity["identifiers"].items():
+                person_entity[f"identifier_{k}"] = v
+
+            for claim in claims:
+                if "subject_identifiers" in claim and claim["subject_identifiers"] is not None:
+                    for k,v in claim["subject_identifiers"].items():
+                        claim[f"subject_identifier_{k}"] = v
+                if "object_identifiers" in claim and claim["object_identifiers"] is not None:
+                    for k,v in claim["object_identifiers"].items():
+                        claim[f"object_identifier_{k}"] = v
 
             return {
                 "entity": person_entity,
