@@ -1,10 +1,6 @@
 import requests
-from urllib.parse import urlparse
-import re
 from datetime import datetime
 from jsonbender import bend, K, S, F, OptionalS
-import json
-from copy import deepcopy
 from . import pylinkedcmd
 
 
