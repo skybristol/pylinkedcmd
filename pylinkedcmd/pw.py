@@ -15,10 +15,12 @@ class GetRecords:
     def __init__(self):
         self.publication_api = publication_api
 
-    def pw_records(self, q=None, mod_x_days=None, page_size=1000):
+    def pw_records(self, q=None, author_id=None, mod_x_days=None, page_size=1000):
         query_url = f"{self.publication_api}/?page_size={page_size}"
         if q is not None:
             query_url = f"{query_url}&q={q}"
+        if author_id is not None:
+            query_url = f"{query_url}&contributor={author_id}"
         if mod_x_days is not None:
             query_url = f"{query_url}&mod_x_days={mod_x_days}"
 
