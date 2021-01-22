@@ -88,7 +88,7 @@ class Summarize:
         self.only_usgs_contributors = only_usgs_contributors
         self.try_doi_for_string_representation = try_doi_for_string_representation
         self.generate_uid = generate_uid
-        self.reference = f"{publication_api}/{pw_record['text'].split('-')[0].strip()}"
+        self.reference = pw_public_url(pw_record['text'])
         self.source_name = "USGS Publications Warehouse"
         self.date_published = self.publication_date()
 
@@ -284,3 +284,6 @@ class Summarize:
         
         return entities_and_claims
 
+
+def pw_public_url(text_string):
+    return f"{publication_api}/{text_string.split('-')[0].strip()}"
