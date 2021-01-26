@@ -5,8 +5,8 @@ import dateutil
 from copy import copy
 import unidecode
 import math
-from . import pylinkedcmd
 import hashlib
+from . import utilities
 
 publication_api = "https://pubs.er.usgs.gov/pubs-services/publication"
 
@@ -204,7 +204,7 @@ class Summarize:
         contributor_entity["identifiers"] = dict()
 
         if "orcid" in contributor:
-            identifiers = pylinkedcmd.actionable_id(contributor["orcid"])
+            identifiers = utilities.actionable_id(contributor["orcid"])
             if identifiers is not None and "orcid" in identifiers:
                 contributor_entity["identifiers"]["orcid"] = identifiers["orcid"]
                 contributor_entity["identifier_orcid"] = identifiers["orcid"]

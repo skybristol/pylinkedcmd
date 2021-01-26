@@ -2,7 +2,7 @@ import requests
 from jsonbender import bend, K, S, F, OptionalS
 from datetime import datetime
 from copy import deepcopy
-from . import pylinkedcmd
+from . import utilities
 import hashlib
 
 
@@ -17,7 +17,7 @@ class Lookup:
         self.mapping = {
             'identifiers': F(
                 lambda source:
-                pylinkedcmd.actionable_id(source['@id']) if "@id" in source else
+                utilities.actionable_id(source['@id']) if "@id" in source else
                 None
             ),
             'instance_of': S('@type'),
@@ -45,7 +45,7 @@ class Lookup:
         }
 
     def document(self):
-        identifiers = pylinkedcmd.actionable_id(self.orcid)
+        identifiers = utilities.actionable_id(self.orcid)
         if identifiers is None:
             if self.return_errors:
                 return {"orcid": self.orcid, "error": "Not a valid ORCID identifier"}

@@ -1,7 +1,7 @@
 import requests
 from datetime import datetime
 from jsonbender import bend, K, S, F, OptionalS
-from . import pylinkedcmd
+from . import utilities
 
 
 class Lookup:
@@ -23,11 +23,11 @@ class Lookup:
             'identifiers': F(
                 lambda source:
                 {'doi': source['DOI'], 'url': source['URL']} if "DOI" in source and "URL" in source else
-                pylinkedcmd.actionable_id(self.doi)
+                utilities.actionable_id(self.doi)
             ),
             'entity_created': datetime.utcnow().isoformat(),
             'entity_source': 'DOI Metadata',
-            'reference': pylinkedcmd.actionable_id(self.doi)["url"],
+            'reference': utilities.actionable_id(self.doi)["url"],
             'instance_of': F(
                 lambda source:
                 source['type'] if "type" in source else
@@ -78,7 +78,7 @@ class Lookup:
             return raw_doc
 
     def document(self):
-        identifiers = pylinkedcmd.actionable_id(self.doi)
+        identifiers = utilities.actionable_id(self.doi)
 
         if identifiers is None:
             if self.return_errors:

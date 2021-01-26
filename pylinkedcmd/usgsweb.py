@@ -4,6 +4,7 @@ import validators
 import re
 from bs4 import BeautifulSoup
 from copy import copy
+from . import utilities
 
 
 class UsgsWeb:
@@ -205,7 +206,7 @@ class UsgsWeb:
 
         orcid_link = soup.find("a", href=self.orcid_link_pattern)
         if orcid_link is not None:
-            check_id = pylinkedcmd.actionable_id(orcid_link.text)
+            check_id = utilities.actionable_id(orcid_link.text)
             if check_id is not None and "orcid" in check_id:
                 profile_page_data["orcid"] = check_id["orcid"]
 

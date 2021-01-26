@@ -2,9 +2,9 @@
 
 __author__ = """R. Sky Bristol"""
 __email__ = 'sbristol@usgs.gov'
-__version__ = '0.1.6'
+__version__ = '0.1.7'
 
-#from . import pylinkedcmd
+from . import utilities
 from . import orcid
 from . import doi
 from . import dbase
