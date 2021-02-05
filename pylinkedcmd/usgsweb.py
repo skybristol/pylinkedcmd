@@ -122,7 +122,7 @@ class UsgsWeb:
 
         return person_record
 
-    def scrape_profile(self, page_url, inventory_content=None):
+    def scrape_profile(self, page_url):
         '''
         Unfortunately, there is no current programmatic way of getting at USGS staff profile pages, where at least some
         staff have put significant effort into rounding out their available online information. For some, these pages
@@ -132,8 +132,6 @@ class UsgsWeb:
         for further analysis, pulls out links from the body (which can be compared with other sources), and shoves the
         body text as a whole into the data for further processing.
         :param page_url: URL to the profile page that can be used as a unique key
-        :param inventory_content: Dict containing the content scraped from the inventory of profile pages to be used 
-        in building additional claims
         :return: dictionary containing the url, list of expertise keywords (if available), list of links (text and
         href) values in dictionaries, and the full body html as a string
         '''
@@ -222,6 +220,42 @@ class UsgsWeb:
                 } for l in other_pubs_container.findAll("a")
             ])
 
+        return profile_page_data
+
+    def claim_root(self, reference, identifiers):
+        claim_root = {
+            "claim_created": datetime.utcnow().isoformat(),
+            "claim_source": "USGS Profile Page",
+            "reference": reference,
+            "date_qualifier": datetime.utcnow().isoformat(),
+            "subject_instance_of": "Person",
+            "subject_identifiers": identifiers,
+            "subject_label": identifiers["name"]
+        }
+
+        return claim_root
+
+    def claims_from_inventory(self, inventory_content):
+        if "title" not in inventory_content:
+            return None
+        else:
+            identifiers = {
+                "name": inventory_content["name"]
+            }
+
+            if "email" in inventory_content:
+                identifiers["email"] = inventory_content["email"]
+
+            job_title_claim = self.claim_root(inventory_content["profile"], identifiers)
+
+            job_title_claim["property_label"] = "job title"
+            job_title_claim["object_instance_of"] = "FieldOfWork"
+            job_title_claim["object_label"] = inventory_content["title"]
+            claims.append(job_title_claim)
+
+        return job_title_claim()
+
+    def claims_from_profile(self, profile_page_data):
         entity_record = {
             "reference": page_url,
             "entity_created": datetime.utcnow().isoformat(),
@@ -232,51 +266,35 @@ class UsgsWeb:
             "identifiers": dict()
         }
 
+        identifiers = {
+            "name": profile_page_data["name"]
+        }
+
         if profile_page_data["email"] is not None:
-            entity_record["identifiers"]["email"] = profile_page_data["email"]
+            identifiers["email"] = profile_page_data["email"]
 
         if profile_page_data["orcid"] is not None:
-            entity_record["identifiers"]["orcid"] = profile_page_data["orcid"]
+            identifiers["orcid"] = profile_page_data["orcid"]
 
-        if any(k in entity_record["identifiers"].keys() for k in ["email", "orcid"]):
-            claims = list()
-            claim_root = {
-                "claim_created": datetime.utcnow().isoformat(),
-                "claim_source": "USGS Profile Page",
-                "reference": page_url,
-                "date_qualifier": datetime.utcnow().isoformat(),
-                "subject_instance_of": "Person",
-                "subject_identifiers": entity_record["identifiers"],
-                "subject_label": profile_page_data["display_name"]
-            }
+        claims = list()
 
-            for expertise_term in profile_page_data["expertise"]:
-                expertise_claim = copy(claim_root)
-                expertise_claim["property_label"] = "expertise"
-                expertise_claim["object_instance_of"] = "UnlinkedTerm"
-                expertise_claim["object_qualifier"] = "subject personal assertion"
-                expertise_claim["object_label"] = expertise_term
-                claims.append(expertise_claim)
-        
-            if profile_page_data["organization_name"] is not None:
-                org_affiliation_claim = copy(claim_root)
-                org_affiliation_claim["property_label"] = "organization affiliation"
-                org_affiliation_claim["object_instance_of"] = "Organization"
-                org_affiliation_claim["object_label"] = profile_page_data["organization_name"]
-                if profile_page_data["organization_link"] is not None:
-                    org_affiliation_claim["object_identifiers"] = {"url": profile_page_data["organization_link"]}
-                claims.append(org_affiliation_claim)
+        claim_root = self.claim_root(profile_page_data["profile"], identifiers)
 
-            if inventory_content is not None and "title" in inventory_content:
-                job_title_claim = copy(claim_root)
-                job_title_claim["property_label"] = "job title"
-                job_title_claim["object_instance_of"] = "FieldOfWork"
-                job_title_claim["object_label"] = inventory_content["title"]
-                claims.append(job_title_claim)
+        for expertise_term in profile_page_data["expertise"]:
+            expertise_claim = copy(claim_root)
+            expertise_claim["property_label"] = "expertise"
+            expertise_claim["object_instance_of"] = "UnlinkedTerm"
+            expertise_claim["object_qualifier"] = "subject personal assertion"
+            expertise_claim["object_label"] = expertise_term
+            claims.append(expertise_claim)
+    
+        if profile_page_data["organization_name"] is not None:
+            org_affiliation_claim = copy(claim_root)
+            org_affiliation_claim["property_label"] = "organization affiliation"
+            org_affiliation_claim["object_instance_of"] = "Organization"
+            org_affiliation_claim["object_label"] = profile_page_data["organization_name"]
+            if profile_page_data["organization_link"] is not None:
+                org_affiliation_claim["object_identifiers"] = {"url": profile_page_data["organization_link"]}
+            claims.append(org_affiliation_claim)
 
-            return {
-                "entity": entity_record,
-                "claims": claims
-            }
-        else:
-            return profile_page_data
+        return claims

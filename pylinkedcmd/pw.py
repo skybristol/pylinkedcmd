@@ -60,8 +60,7 @@ class Summarize:
         self, 
         pw_record, 
         only_usgs_contributors=True,
-        try_doi_for_string_representation=True, 
-        generate_uid=False
+        try_doi_for_string_representation=True
     ):
         self.description = "Set of functions for working with the USGS Pubs Warehouse REST API a little more better"
         self.publication_api = publication_api
@@ -77,213 +76,286 @@ class Summarize:
         self.property_class_mapping = {
             "authors": {
                 "subject": "author of",
-                "object": "authored by"
+                "object": "authored by",
+                "instance_of": "Person",
+                "bidirectional": True
             },
             "editors": {
                 "subject": "editor of",
-                "object": "edited by"
+                "object": "edited by",
+                "instance_of": "Person",
+                "bidirectional": True
+            },
+            "publishers": {
+                "subject": "publisher of",
+                "object": "published by",
+                "instance_of": "Organization",
+                "bidirectional": True
+            },
+            "funders": {
+                "subject": "funder of",
+                "object": "funded by",
+                "instance_of": "Organization",
+                "bidirectional": True
+            },
+            "affiliations": {
+                "subject": "affiliated with",
+                "object": "affiliated with",
+                "instance_of": "Organization",
+                "bidirectional": True
             }
         }
         self.pw_record = pw_record
         self.only_usgs_contributors = only_usgs_contributors
         self.try_doi_for_string_representation = try_doi_for_string_representation
-        self.generate_uid = generate_uid
-        self.reference = pw_public_url(pw_record['text'])
+
+        self.reference = pw_public_url(pw_record)
         self.source_name = "USGS Publications Warehouse"
-        self.date_published = self.publication_date()
+        self.pub_identifiers = pub_id(pw_record)
+        self.label = pw_record["title"]
+        self.pub_instance_of = "Publication"
 
-    def publication_date(self):
-        if "publicationYear" in self.pw_record:
-            return self.pw_record["publicationYear"]
-        elif "displayToPublicDate" in self.pw_record:
-            try:
-                return datetime.strftime(dateutil.parser.parse(self.pw_record["displayToPublicDate"], '%Y'))
-            except:
-                return None
-
-    def entity_stub(self):
-        return {
-            "reference": self.reference,
-            "entity_created": datetime.utcnow().isoformat(),
-            "entity_source": self.source_name,
-        }
-
-    def claim_stub(self):
-        return {
+        self.claim_stub = {
             "reference": self.reference,
             "claim_created": datetime.utcnow().isoformat(),
             "claim_source": self.source_name,
-            "date_qualifier": self.date_published
+            "date_qualifier": publication_date(pw_record)
         }
 
-    def generate_uid_from_identifiers(self, record):
-        if "subject_identifiers" in record:
-            source_identifiers = record["subject_identifiers"]
-        else:
-            source_identifiers = record["identifiers"]
 
-        for id_type in ["doi","pw_url","orcid","email","pw_contributor_id"]:
-            if id_type in source_identifiers:
-                id_prop = id_type
-                id_value = str(source_identifiers[id_type])
-                break
+    def pub_claims(self, claim_source, label_prop, property_class, id_prop=None):
+        claims = list()
 
-        if "subject_identifiers" in record:
-            id_value = ":".join([
-                id_prop.upper(),
-                id_value,
-                record["property_label"],
-                record["object_label"]
-            ])
+        subject_claim = copy(self.claim_stub)
+        object_claim = copy(self.claim_stub)
 
-        return id_value, hashlib.md5(id_value.encode('utf-8')).hexdigest()
+        subject_claim["subject_label"] = claim_source[label_prop]
+        object_claim["object_label"] = claim_source[label_prop]
 
-    def pub_entity(self):
-        pub_entity = self.entity_stub()
-        pub_entity["instance_of"] = self.pw_record["publicationType"]["text"]
-        pub_entity["name"] = self.pw_record["title"]
-        pub_entity["identifiers"] = dict()
-        pub_entity["date_published"] = self.publication_date()
+        subject_claim["object_label"] = self.label
+        object_claim["subject_label"] = self.label
 
-        try:
-            pub_entity["publisher"] = self.pw_record["publisher"]
-        except KeyError:
-            pass
+        subject_claim["subject_instance_of"] = self.property_class_mapping[property_class]["instance_of"]
+        subject_claim["object_instance_of"] = self.pub_instance_of
+        object_claim["object_instance_of"] = self.property_class_mapping[property_class]["instance_of"]
+        object_claim["subject_instance_of"] = self.pub_instance_of
 
-        try:
-            pub_entity["identifiers"]["doi"] = self.pw_record["doi"]
-            pub_entity["identifier_doi"] = self.pw_record["doi"]
-        except KeyError:
-            pass
+        subject_claim["property_label"] = self.property_class_mapping[property_class]["subject"]
+        object_claim["property_label"] = self.property_class_mapping[property_class]["object"]
 
-        if not pub_entity["identifiers"]:
-            pub_entity["identifiers"]["pw_url"] = self.reference
+        # Identifiers for pub
+        subject_claim["object_identifiers"] = self.pub_identifiers["identifiers"]
+        object_claim["subject_identifiers"] = self.pub_identifiers["identifiers"]
+        for k,v in self.pub_identifiers.items():
+            if k.split("_")[0] == "identifier":
+                object_claim[f"subject_{k}"] = v
+                subject_claim[f"object_{k}"] = v
+        subject_claim["claim_id"] = claim_id(subject_claim)
+        object_claim["claim_id"] = claim_id(object_claim)
 
-        if self.generate_uid:
-            string_id, uid = self.generate_uid_from_identifiers(pub_entity)
-            pub_entity["entity_id"] = uid
+        # Identifiers for claim subject/object
+        if id_prop is not None:
+            subject_claim["subject_identifiers"] = {
+                id_prop: claim_source[id_prop]
+            }
+            if isinstance(claim_source[id_prop], dict):
+                for k, v in claim_source[id_prop].items():
+                    subject_claim[f"subject_identifier_{k}"] = v
+                else:
+                    object_claim[f"subject_identifier_{id_prop}"] = claim_source[id_prop]
 
-        try:
-            pub_entity["is_part_of"] = \
-                f'{self.pw_record["publicationSubtype"]["text"]}:{self.pw_record["seriesTitle"]["text"]}'
-        except KeyError:
-            try:
-                pub_entity["is_part_of"] = self.pw_record["largerWorkTitle"]
-            except KeyError:
-                pass
+            object_claim["object_identifiers"] = {
+                id_prop: claim_source[id_prop]
+            }
+            if isinstance(claim_source[id_prop], dict):
+                for k, v in claim_source[id_prop].items():
+                    object_claim[f"object_identifier_{k}"] = v
+                else:
+                    object_claim[f"object_identifier_{id_prop}"] = claim_source[id_prop]
 
-        if "docAbstract" in self.pw_record and not any(x in self.pw_record["docAbstract"] for x in self.no_abstract_text_list):
-            pub_entity["abstract"] = self.pw_record["docAbstract"]
+        claims.append(subject_claim)
+        claims.append(object_claim)
 
-        try:
-            pub_entity["string_representation"] = self.pw_record["usgsCitation"]
-        except KeyError:
-            pass
+        return claims
 
-        if "string_representation" not in pub_entity and "identifier_doi" in pub_entity and self.try_doi_for_string_representation:
-            try:
-                r_citation = requests.get(
-                        f"https://doi.org/{pub_entity['identifier_doi']}", 
-                        headers={"accept": "text/x-bibliography"}
-                    )
-                if r_citation.status_code == 200:
-                    pub_entity["string_representation"] = r_citation.text
-            except:
-                pass
+    def person_org_claims(self, claim_source):
+        claims = list()
 
-        return pub_entity
+        person_claim = copy(self.claim_stub)
+        org_claim = copy(self.claim_stub)
 
-    def contributor_entity(self, contributor):
-        contributor_entity = self.entity_stub()
+        person_claim["subject_label"] = claim_source["person"]["label"]
+        person_claim["object_label"] = claim_source["org"]["label"]
 
-        contributor_entity["instance_of"] = "Person"
-        try:
-            contributor_entity["name"] = f"{contributor['given']} {contributor['family']}"
-        except KeyError:
-            contributor_entity["name"] = contributor['text']
-        contributor_entity["identifiers"] = dict()
+        org_claim["subject_label"] = claim_source["org"]["label"]
+        org_claim["object_label"] = claim_source["person"]["label"]
 
-        if "orcid" in contributor:
-            identifiers = utilities.actionable_id(contributor["orcid"])
-            if identifiers is not None and "orcid" in identifiers:
-                contributor_entity["identifiers"]["orcid"] = identifiers["orcid"]
-                contributor_entity["identifier_orcid"] = identifiers["orcid"]
+        person_claim["subject_instance_of"] = "Person"
+        person_claim["object_instance_of"] = "Organization"
 
-        if "email" in contributor and validators.email(contributor["email"].strip()):
-            contributor_entity["identifiers"]["email"] = contributor["email"].strip()
-            contributor_entity["identifier_email"] = contributor["email"].strip()
+        org_claim["subject_instance_of"] = "Organization"
+        org_claim["object_instance_of"] = "Person"
 
-        if not contributor_entity["identifiers"]:
-            contributor_entity["identifiers"]["pw_contributor_id"] = contributor["contributorId"]
+        person_claim["property_label"] = self.property_class_mapping[claim_source["property_class"]]["subject"]
+        org_claim["property_label"] = self.property_class_mapping[claim_source["property_class"]]["object"]
 
-        if self.generate_uid:
-            string_id, uid = self.generate_uid_from_identifiers(contributor_entity)
-            contributor_entity["entity_id"] = uid
+        if claim_source["person"]["identifiers"] is not None:
+            person_claim["subject_identifiers"] = claim_source["person"]["identifiers"]
+            org_claim["object_identifiers"] = claim_source["person"]["identifiers"]
 
-        return contributor_entity
+            for k, v in claim_source["person"]["identifiers"].items():
+                person_claim[f"subject_identifier_{k}"] = v
+                org_claim[f"object_identifier_{k}"] = v
 
-    def contributor_claims(self, pub_entity, contributor_entity, contributor_type):
-        contributor_claim = self.claim_stub()
-        contributor_claim["property_label"] = self.property_class_mapping[contributor_type]["subject"]
-        contributor_claim["subject_instance_of"] = contributor_entity["instance_of"]
-        contributor_claim["subject_label"] = contributor_entity["name"]
-        contributor_claim["subject_identifiers"] = contributor_entity["identifiers"]
-        for k, v in contributor_entity["identifiers"].items():
-            contributor_claim[f"subject_identifier_{k}"] = v
-        contributor_claim["object_instance_of"] = pub_entity["instance_of"]
-        contributor_claim["object_label"] = pub_entity["name"]
-        contributor_claim["object_identifiers"] = pub_entity["identifiers"]
-        for k, v in pub_entity["identifiers"].items():
-            contributor_claim[f"object_identifier_{k}"] = v
-        if self.generate_uid:
-            contributor_claim["claim_id"] = self.generate_uid_from_identifiers(contributor_claim)
+        if claim_source["org"]["identifiers"] is not None:
+            org_claim["subject_identifiers"] = claim_source["org"]["identifiers"]
+            person_claim["object_identifiers"] = claim_source["org"]["identifiers"]
 
-        pub_claim = self.claim_stub()
-        pub_claim["property_label"] = self.property_class_mapping[contributor_type]["object"]
-        pub_claim["subject_instance_of"] = pub_entity["instance_of"]
-        pub_claim["subject_label"] = pub_entity["name"]
-        pub_claim["subject_identifiers"] = pub_entity["identifiers"]
-        for k, v in pub_entity["identifiers"].items():
-            pub_claim[f"subject_identifier_{k}"] = v
-        pub_claim["object_instance_of"] = contributor_entity["instance_of"]
-        pub_claim["object_label"] = contributor_entity["name"]
-        pub_claim["object_identifiers"] = contributor_entity["identifiers"]
-        for k, v in contributor_entity["identifiers"].items():
-            pub_claim[f"object_identifier_{k}"] = v
-        if self.generate_uid:
-            string_id, uid = self.generate_uid_from_identifiers(pub_claim)
-            pub_claim["claim_id"] = string_id
-            pub_claim["claim_uid"] = uid
+            for k, v in claim_source["org"]["identifiers"].items():
+                org_claim[f"subject_identifier_{k}"] = v
+                person_claim[f"object_identifier_{k}"] = v
 
-        return [contributor_claim, pub_claim]
+        person_claim["claim_id"] = claim_id(person_claim)
+        org_claim["claim_id"] = claim_id(org_claim)
 
-    def digest(self):
-        pub_entity = self.pub_entity()
-        entities_and_claims = {
-            "entities": [pub_entity],
-            "claims": list()
+        claims.append(person_claim)
+        claims.append(org_claim)
+
+        return claims
+
+    def pub_link_claim(self, link_data, property_label="distributed by"):
+        link_claim = copy(self.claim_stub)
+
+        link_claim["subject_label"] = self.label
+        link_claim["subject_instance_of"] = self.pub_instance_of
+
+        # Identifiers for pub
+        link_claim["subject_identifiers"] = self.pub_identifiers["identifiers"]
+        for k,v in self.pub_identifiers["identifiers"].items():
+            if k.split("_")[0] == "identifier":
+                link_claim[f"subject_{k}"] = v
+
+        link_claim["property_label"] = property_label
+        link_claim["object_instance_of"] = "Web Link"
+
+        link_claim["object_label"] = link_data["label"]
+        link_claim["object_identifiers"] = {
+            "url": link_data["url"]
         }
+        link_claim["object_identifier_url"] = link_data["url"]
+
+        link_claim["claim_id"] = claim_id(link_claim)
+
+        return link_claim
+
+    def extract_claims(self):
+        claims = list()
+
+        if "publisher" in self.pw_record:
+            d_publisher = {
+                "publisher": self.pw_record["publisher"]
+            }
+            claims.extend(self.pub_claims(d_publisher, "publisher", "publishers"))
+
+        if "costCenters" in self.pw_record:
+            for cost_center in self.pw_record["costCenters"]:
+                d_cost_center = {
+                    "pw_cost_center_id": cost_center["id"],
+                    "label": cost_center["text"]
+                }
+                claims.extend(self.pub_claims(d_cost_center, "label", "funders", "pw_cost_center_id"))
+
         if "contributors" in self.pw_record:
-            for contributor_container, contributors in self.pw_record["contributors"].items():
-                contributor_class = next((v for k,v in self.property_class_mapping.items() if k == contributor_container), None)
-                if contributor_class is not None:
-                    if self.only_usgs_contributors:
-                        contributors_list = [i for i in contributors if i["usgs"]]
+            for contributor_type, contributor_list in self.pw_record["contributors"].items():
+                for contributor in contributor_list:
+                    d_contributor = dict()
+                    if "given" in contributor and "family" in contributor:
+                        d_contributor["label"] = f"{contributor['given']} {contributor['family']}"
                     else:
-                        contributors_list = contributors
-                    for contributor in contributors_list:
-                        contributor_entity = self.contributor_entity(contributor)
-                        entities_and_claims["entities"].append(contributor_entity)
-                        entities_and_claims["claims"].extend(
-                            self.contributor_claims(
-                                pub_entity, 
-                                contributor_entity, 
-                                contributor_type=contributor_container
-                                )
-                            )
-        
-        return entities_and_claims
+                        d_contributor["label"] = contributor["text"]
+
+                    if "email" in contributor or "orcid" in contributor:
+                        d_contributor["identifiers"] = dict()
+                        if "email" in contributor:
+                            d_contributor["identifiers"]["email"] = contributor["email"]
+                        if "orcid" in contributor:
+                            d_contributor["identifiers"]["orcid"] = contributor["orcid"].split("/")[-1]
+                        
+                        id_prop = "identifiers"
+                    else:
+                        id_prop = None
+
+                    if "affiliations" in contributor and len(contributor["affiliations"]) > 0:
+                        for affiliation in contributor["affiliations"]:
+                            d_affiliation = {
+                                "property_class": "affiliations",
+                                "org": {
+                                    "label": affiliation["text"],
+                                    "identifiers": None
+                                },
+                                "person": {
+                                    "label": d_contributor["label"],
+                                    "identifiers": None
+                                }
+                            }
+                            if id_prop is not None:
+                                d_affiliation["person"]["identifiers"] = d_contributor["identifiers"]
+
+                            claims.extend(self.person_org_claims(d_affiliation))
+
+                    claims.extend(self.pub_claims(d_contributor, "label", contributor_type, id_prop))
+
+        if "links" in self.pw_record:
+            for link in [l for l in self.pw_record["links"] if "description" in l or "text" in l]:
+                d_link = {
+                    "url": link["url"]
+                }
+                if "description" in link:
+                    d_link["label"] = f'{link["description"]} ({link["url"]})'
+                else:
+                    d_link["label"] = f'{link["text"]} ({link["url"]})'
+                claims.append(self.pub_link_claim(d_link))
+
+        return claims
 
 
-def pw_public_url(text_string):
-    return f"{publication_api}/{text_string.split('-')[0].strip()}"
+def pw_public_url(pw_record):
+    return f"{publication_api}/{pw_record['text'].split('-')[0].strip()}"
+
+def pub_id(pw_record):
+    identifiers = {
+        "identifiers": {
+            "pw_pub_id": pw_record["id"],
+            "pw_url": pw_public_url(pw_record)
+        }
+    }
+    if "doi" in pw_record:
+        identifiers["identifiers"]["doi"] = pw_record["doi"]
+        use_for_uid = pw_record["doi"]
+    else:
+        use_for_uid = identifiers["identifiers"]["pw_url"]
+    
+    identifiers["pub_uid"] = hashlib.md5(use_for_uid.encode('utf-8')).hexdigest()
+
+    for k, v in identifiers["identifiers"].items():
+        identifiers[f"identifier_{k}"] = v
+
+    return identifiers
+
+def publication_date(pw_record):
+    if "publicationYear" in pw_record:
+        return pw_record["publicationYear"]
+    elif "displayToPublicDate" in pw_record:
+        try:
+            return datetime.strftime(dateutil.parser.parse(pw_record["displayToPublicDate"], '%Y'))
+        except:
+            return None
+
+def claim_id(claim):
+    id_string = ":".join([
+        claim["subject_label"],
+        claim["property_label"],
+        claim["object_label"]
+    ])
+
+    return id_string
