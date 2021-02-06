@@ -52,6 +52,9 @@ class GetRecords:
                 if response_data["records"]:
                     records.extend(response_data["records"])
 
+        for record in records:
+            record.update({"date_cached": str(datetime.utcnow().isoformat())})
+
         return records
 
 

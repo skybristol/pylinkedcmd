@@ -88,6 +88,7 @@ class UsgsWeb:
         org_link = section.find("a", href=self.org_link_pattern)
 
         person_record = {
+            "date_cached": str(datetime.utcnow().isoformat()),
             "name": None,
             "title": None,
             "organization_name": None,

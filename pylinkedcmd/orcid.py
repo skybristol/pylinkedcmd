@@ -70,6 +70,8 @@ class Lookup:
         else:
             raw_doc = self.source_doc
 
+        raw_doc["date_cached"] = str(datetime.utcnow().isoformat())
+
         if self.summarize:
             person_entity = bend(self.mapping, raw_doc)
 

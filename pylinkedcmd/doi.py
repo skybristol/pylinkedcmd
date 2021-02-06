@@ -19,15 +19,22 @@ class Lookup:
         self.include_source = include_source
         self.return_errors = return_errors
         self.headers = {"accept": "application/vnd.citationstyles.csl+json"}
-        self.mapping = {
+
+    def mapping(self):
+        identifier = actionable_id(self.doi)
+
+        if identifier is None:
+            return
+
+        mapping = {
             'identifiers': F(
                 lambda source:
                 {'doi': source['DOI'], 'url': source['URL']} if "DOI" in source and "URL" in source else
-                utilities.actionable_id(self.doi)
+                identifier
             ),
             'entity_created': datetime.utcnow().isoformat(),
             'entity_source': 'DOI Metadata',
-            'reference': utilities.actionable_id(self.doi)["url"],
+            'reference': identifiers["url"],
             'instance_of': F(
                 lambda source:
                 source['type'] if "type" in source else
@@ -62,6 +69,8 @@ class Lookup:
             )
         }
 
+        return mapping
+
     def get_data(self, doi_url):
         if self.source_doc is not None:
             return self.source_doc
@@ -93,6 +102,8 @@ class Lookup:
             else:
                 return None
 
+        raw_doc["date_cached"] = str(datetime.utcnow().isoformat())
+
         if self.summarize:
             if len(raw_doc["title"]) == 0:
                 if self.return_errors:
@@ -100,7 +111,7 @@ class Lookup:
                 else:
                     return None
 
-            entity = bend(self.mapping, raw_doc)
+            entity = bend(self.mapping(), raw_doc)
             if self.include_source:
                 entity["source"] = raw_doc
 
