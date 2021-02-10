@@ -235,7 +235,7 @@ def claims_from_orcid(data):
 
         for item in affiliations:
             org_affiliation_claim = copy(claim_stub)
-            org_affiliation_claim["property_label"] = "organization affiliation"
+            org_affiliation_claim["property_label"] = "professional affiliation"
             org_affiliation_claim["object_instance_of"] = item["@type"]
 
             org_affiliation_claim["object_identifiers"] = dict()
@@ -253,7 +253,7 @@ def claims_from_orcid(data):
             claims.append(org_affiliation_claim)
 
             per_affiliation_claim = {
-                "property_label": "personnel affiliation",
+                "property_label": "professional affiliation",
                 "claim_created": str(datetime.utcnow().isoformat()),
                 "claim_source": "ORCID",
                 "reference": data["@id"]
@@ -289,7 +289,7 @@ def claims_from_orcid(data):
             claims.append(ed_affiliation_claim)
 
             student_affiliation_claim = {
-                "property_label": "student affiliation",
+                "property_label": "educational affiliation",
                 "claim_created": str(datetime.utcnow().isoformat()),
                 "claim_source": "ORCID",
                 "reference": data["@id"]
@@ -300,5 +300,217 @@ def claims_from_orcid(data):
                 if k.split('_')[0] == "object":
                     student_affiliation_claim[k.replace('object', 'subject')] = v
             claims.append(student_affiliation_claim)
+
+    return id_claims(claims)
+
+def claims_from_doi(data):
+    if isinstance(data["title"], list) and (len(data["container-title"]) == 0 or "reference_string" not in data):
+        return
+
+    if isinstance(data["title"], list) and "reference_string" in data:
+        item_label = data["reference_string"]
+    else:
+        item_label = data["title"]
+
+    claims = list()
+
+    claim_reference = {
+        "claim_created": str(datetime.utcnow().isoformat()),
+        "claim_source": "DOI",
+        "reference": data["URL"],
+        "date_qualifier": data["issued"]["date-parts"][0][0],
+    }
+
+    doi_as_subject = copy(claim_reference)
+    doi_as_subject["subject_label"] = item_label
+    doi_as_subject["subject_instance_of"] = "CitableResource"
+    doi_as_subject["subject_identifiers"] = {
+        "doi": data["DOI"]
+    }
+
+    doi_as_object = copy(claim_reference)
+    doi_as_object["object_label"] = item_label
+    doi_as_object["object_instance_of"] = "CitableResource"
+    doi_as_object["object_identifiers"] = {
+        "doi": data["DOI"]
+    }
+
+    if "publisher" in data:
+        published_by_claim = copy(doi_as_subject)
+        published_by_claim["property_label"] = "published by"
+        published_by_claim["object_label"] = data["publisher"]
+        published_by_claim["object_instance_of"] = "Organization"
+        claims.append(published_by_claim)
+
+        published_claim = copy(doi_as_object)
+        published_claim["property_label"] = "published"
+        published_claim["subject_label"] = data["publisher"]
+        published_claim["subject_instance_of"] = "Organization"
+        claims.append(published_claim)
+
+    if "container-title" in data and isinstance(data["container-title"], str):
+        article_published_in_claim = copy(doi_as_subject)
+        article_published_in_claim["property_label"] = "published in"
+        article_published_in_claim["object_instance_of"] = "Publication"
+        article_published_in_claim["object_label"] = data["container-title"]
+        claims.append(article_published_in_claim)
+
+    if "subject" in data:
+        for subject in data["subject"]:
+            addresses_subject_claim = copy(doi_as_subject)
+            addresses_subject_claim["property_label"] = "addresses subject"
+            addresses_subject_claim["object_instance_of"] = "UnlinkedTerm"
+            addresses_subject_claim["object_label"] = subject.strip()
+            claims.append(addresses_subject_claim)
+
+    if "categories" in data:
+        for categories_string in data["categories"]:
+            for category in categories_string.split(","):
+                addresses_subject_claim = copy(doi_as_subject)
+                addresses_subject_claim["property_label"] = "addresses subject"
+                addresses_subject_claim["object_instance_of"] = "UnlinkedTerm"
+                addresses_subject_claim["object_label"] = category.strip()
+                claims.append(addresses_subject_claim)
+
+    if "funder" in data:
+        for funder in data["funder"]:
+            article_funded_by_claim = copy(doi_as_subject)
+            article_funded_by_claim["property_label"] = "funded by"
+            article_funded_by_claim["object_instance_of"] = "Organization"
+            article_funded_by_claim["object_label"] = funder["name"]
+            if "DOI" in funder:
+                article_funded_by_claim["object_identifiers"] = {
+                    "fundref_id": funder["DOI"]
+                }
+            claims.append(article_funded_by_claim)
+
+    if "event" in data:
+        article_event_claim = copy(doi_as_subject)
+        article_event_claim["property_label"] = "part of event"
+        article_event_claim["object_instance_of"] = "Event"
+        article_event_claim["object_label"] = data["event"]
+        article_event_claim["object_qualifier"] = "unverified event associated with publication"
+        claims.append(article_event_claim)
+
+    party_contacts = list()
+    if "author" in data:
+        for author in data["author"]:
+            author.update({
+                "type": "author", 
+                "subject_property": "authored", 
+                "object_property": "authored by"
+            })
+        party_contacts.extend(data["author"])
+
+    if "editor" in data:
+        for editor in data["editor"]:
+            editor.update({
+                "type": "editor", 
+                "subject_property": "edited", 
+                "object_property": "edited by"
+            })
+        party_contacts.extend(data["editor"])
+
+    if party_contacts:
+        for party in party_contacts:
+            if "literal" in party:
+                party_label = party["literal"]
+                party_instance_of = "Organization"
+            elif "name" in party:
+                party_label = party["name"]
+                party_instance_of = "Organization"
+            else:
+                if "given" in party and "family" in party:
+                    party_label = f"{party['given']} {party['family']}"
+                    party_instance_of = "Person"
+                elif "family" in party:
+                    party_label = party['family']
+                    party_instance_of = "Person"
+
+            party_as_object = copy(claim_reference)
+            party_as_object["object_instance_of"] = party_instance_of
+            party_as_object["object_label"] = party_label
+    
+            party_as_subject = copy(claim_reference)
+            party_as_subject["subject_instance_of"] = party_instance_of
+            party_as_subject["subject_label"] = party_label
+
+            if "sequence" in party:
+                party_as_object["object_qualifier"] = f'{party["sequence"]} {party["type"]}'
+                party_as_subject["subject_qualifier"] = f'{party["sequence"]} {party["type"]}'
+
+            if "ORCID" in party:
+                party_identifiers = utilities.actionable_id(party["ORCID"])
+                if party_identifiers is not None:
+                    party_as_object["object_identifiers"] = party_identifiers
+                    party_as_subject["subject_identifiers"] = party_identifiers
+            
+            contributed_by_claim = copy(doi_as_subject)
+            contributed_by_claim["property_label"] = party["object_property"]
+            contributed_by_claim.update(party_as_object)
+            claims.append(contributed_by_claim)
+
+            contributor_claim = copy(doi_as_object)
+            contributor_claim["property_label"] = party["subject_property"]
+            contributor_claim.update(party_as_subject)
+            claims.append(contributor_claim)
+
+            if "affiliation" in party:
+                for affiliation in party["affiliation"]:
+                    party_affiliated_with_claim = copy(party_as_subject)
+                    party_affiliated_with_claim["property_label"] = "professional affiliation"
+                    party_affiliated_with_claim["object_instance_of"] = "Organization"
+                    party_affiliated_with_claim["object_label"] = affiliation["name"]
+                    claims.append(party_affiliated_with_claim)
+
+                    org_affiliated_with_claim = copy(party_as_object)
+                    org_affiliated_with_claim["property_label"] = "professional affiliation"
+                    org_affiliated_with_claim["subject_instance_of"] = "Organization"
+                    org_affiliated_with_claim["subject_label"] = affiliation["name"]
+                    claims.append(org_affiliated_with_claim)
+
+            if "container-title" in data and isinstance(data["container-title"], str):
+                party_published_in_claim = copy(party_as_subject)
+                party_published_in_claim["property_label"] = "published in"
+                party_published_in_claim["object_instance_of"] = "Publication"
+                party_published_in_claim["object_label"] = data["container-title"]
+                claims.append(party_published_in_claim)
+
+            if "subject" in data:
+                for subject in data["subject"]:
+                    party_addresses_subject_claim = copy(party_as_subject)
+                    party_addresses_subject_claim["property_label"] = "addresses subject"
+                    party_addresses_subject_claim["object_instance_of"] = "UnlinkedTerm"
+                    party_addresses_subject_claim["object_label"] = subject.strip()
+                    claims.append(party_addresses_subject_claim)
+
+            if "categories" in data:
+                for categories_string in data["categories"]:
+                    for category in categories_string.split(","):
+                        party_addresses_subject_claim = copy(party_as_subject)
+                        party_addresses_subject_claim["property_label"] = "addresses subject"
+                        party_addresses_subject_claim["object_instance_of"] = "UnlinkedTerm"
+                        party_addresses_subject_claim["object_label"] = category.strip()
+                        claims.append(party_addresses_subject_claim)
+
+            if "funder" in data:
+                for funder in data["funder"]:
+                    party_funded_by_claim = copy(party_as_subject)
+                    party_funded_by_claim["property_label"] = f"{party['subject_property']} article funded by"
+                    party_funded_by_claim["object_instance_of"] = "Organization"
+                    party_funded_by_claim["object_label"] = funder["name"]
+                    if "DOI" in funder:
+                        party_funded_by_claim["object_identifiers"] = {
+                            "fundref_id": funder["DOI"]
+                        }
+                    claims.append(party_funded_by_claim)
+
+            if "event" in data:
+                party_event_claim = copy(party_as_subject)
+                party_event_claim["property_label"] = "participated in event"
+                party_event_claim["object_instance_of"] = "Event"
+                party_event_claim["object_label"] = data["event"]
+                party_event_claim["object_qualifier"] = "unverified event associated with publication"
+                claims.append(party_event_claim)
 
     return id_claims(claims)
