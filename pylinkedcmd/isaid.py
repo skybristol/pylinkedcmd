@@ -4,7 +4,7 @@ from copy import copy
 import hashlib
 from . import utilities
 
-def id_claims(claims, include_uid=True):
+def id_claims(claims, include_uid=True, unwind_ids=True):
     for claim in claims:
         claim["claim_id"] = ":".join([
             claim["claim_source"],
@@ -14,6 +14,14 @@ def id_claims(claims, include_uid=True):
         ])
         if include_uid:
             claim["claim_uid"] = hashlib.md5(claim["claim_id"].encode('utf-8')).hexdigest()
+        
+        if unwind_ids:
+            if "subject_identifiers" in claim:
+                for k,v in claim["subject_identifiers"].items():
+                    claim[f"subject_identifier_{k}"] = v
+            if "object_identifiers" in claim:
+                for k,v in claim["object_identifiers"].items():
+                    claim[f"object_identifier_{k}"] = v
 
     return claims
 
