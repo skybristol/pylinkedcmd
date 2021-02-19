@@ -2,9 +2,14 @@ from datetime import datetime
 import validators
 from copy import copy
 import hashlib
+from itertools import groupby
+from operator import itemgetter
 from . import utilities
 
 def id_claims(claims, include_uid=True, unwind_ids=True):
+    # Take care of issue with some missing object labels
+    claims = [i for i in claims if len(i["object_label"]) > 0]
+
     for claim in claims:
         claim["claim_id"] = ":".join([
             claim["claim_source"],
@@ -331,14 +336,14 @@ def claims_from_doi(data):
 
     doi_as_subject = copy(claim_reference)
     doi_as_subject["subject_label"] = item_label
-    doi_as_subject["subject_instance_of"] = "CitableResource"
+    doi_as_subject["subject_instance_of"] = "CreativeWork"
     doi_as_subject["subject_identifiers"] = {
         "doi": data["DOI"]
     }
 
     doi_as_object = copy(claim_reference)
     doi_as_object["object_label"] = item_label
-    doi_as_object["object_instance_of"] = "CitableResource"
+    doi_as_object["object_instance_of"] = "CreativeWork"
     doi_as_object["object_identifiers"] = {
         "doi": data["DOI"]
     }
@@ -405,7 +410,7 @@ def claims_from_doi(data):
         for author in data["author"]:
             author.update({
                 "type": "author", 
-                "subject_property": "authored", 
+                "subject_property": "author of", 
                 "object_property": "authored by"
             })
         party_contacts.extend(data["author"])
@@ -414,7 +419,7 @@ def claims_from_doi(data):
         for editor in data["editor"]:
             editor.update({
                 "type": "editor", 
-                "subject_property": "edited", 
+                "subject_property": "editor of", 
                 "object_property": "edited by"
             })
         party_contacts.extend(data["editor"])
@@ -504,9 +509,10 @@ def claims_from_doi(data):
             if "funder" in data:
                 for funder in data["funder"]:
                     party_funded_by_claim = copy(party_as_subject)
-                    party_funded_by_claim["property_label"] = f"{party['subject_property']} article funded by"
+                    party_funded_by_claim["property_label"] = "funded by"
                     party_funded_by_claim["object_instance_of"] = "Organization"
                     party_funded_by_claim["object_label"] = funder["name"]
+                    party_funded_by_claim["object_qualifier"] = "funding reported from published article"
                     if "DOI" in funder:
                         party_funded_by_claim["object_identifiers"] = {
                             "fundref_id": funder["DOI"]
@@ -522,3 +528,124 @@ def claims_from_doi(data):
                 claims.append(party_event_claim)
 
     return id_claims(claims)
+
+summarization_properties = {
+    "Person": {
+        "facets": [
+            "job title",
+            "educational affiliation",
+            "professional affiliation",
+            "employed by",
+            "has expertise",
+            "addresses subject",
+            "author of",
+            "editor of",
+            "published in",
+            "funded by",
+            "participated in event"
+        ],
+        "category": {
+            "default": "person"
+        }
+    },
+    "CreativeWork": {
+        "facets": [
+            "authored by",
+            "edited by",
+            "addresses subject",
+            "part of event",
+            "published in",
+            "published by"
+        ],
+        "properties_from_source": ["abstract"],
+        "category": {
+            "type": "derived from source",
+            "default": "document",
+            "source prop": "type",
+            "mapping": {
+                'dataset': 'data'
+            }
+        },
+        "linkable_id": {
+            "property": "doi",
+            "resolver": "https://doi.org/"
+        }
+    }
+}
+
+def entity_from_claims(claims, target_instance_of, source_doc=None):
+    if target_instance_of not in summarization_properties.keys():
+        return
+
+    config = summarization_properties[target_instance_of]
+
+    entity = {
+        "entity_updated": str(datetime.utcnow().isoformat()),
+        "instance_of": target_instance_of,
+        "identifiers": dict(),
+        "references": list(set([i["reference"] for i in claims])),
+        "sources": list(set([i["claim_source"] for i in claims])),
+        "category": config["category"]["default"]
+    }
+
+    all_names = list(set(
+            [i["subject_label"] for i in claims if i["subject_instance_of"] == target_instance_of]
+            +
+            [i["object_label"] for i in claims if i["object_instance_of"] == target_instance_of]
+        ))
+
+    if target_instance_of == "Person":
+        entity["alternate_names"] = all_names
+
+    subject_identifiers = [
+        i["subject_identifiers"] for i in claims 
+        if "subject_identifiers" in i and i["subject_instance_of"] == target_instance_of
+    ]
+    object_identifiers = [
+        i["object_identifiers"] for i in claims 
+        if "object_identifiers" in i and i["object_instance_of"] == target_instance_of
+    ]
+    all_identifiers = subject_identifiers + object_identifiers
+
+    for identifiers in all_identifiers:
+        for k,v in identifiers.items():
+            if k not in entity["identifiers"]:
+                entity["identifiers"][k] = v
+                entity[f"identifier_{k}"] = v
+
+    if "name" in entity["identifiers"]:
+        entity["name"] = entity["identifiers"]["name"]
+    else:
+        entity["name"] = all_names[0]
+
+    for prop in config["facets"]:
+        entity[prop] = list(set([
+            i["object_label"] for i in claims 
+            if i["property_label"] == prop 
+            and i["subject_instance_of"] == target_instance_of
+        ]))
+
+    if source_doc is not None:
+        for prop in summarization_properties[target_instance_of]["properties_from_source"]:
+            if prop in source_doc:
+                entity[prop] = source_doc[prop]
+
+        if "source prop" in config["category"] and config["category"]["source prop"] in source_doc:
+            mapped_category = next(
+                (
+                    v for k,v in config["category"]["mapping"].items()
+                    if k == source_doc[config["category"]["source prop"]]
+                ), None)
+            if mapped_category is not None:
+                entity["category"] = mapped_category
+
+    if "linkable_id" in config and config["linkable_id"]["property"] in entity["identifiers"]:
+        entity["link"] = f'{config["linkable_id"]["resolver"]}{entity["identifiers"][config["linkable_id"]["property"]]}'
+
+    for identifier_type in ["email","orcid","doi"]:
+        if f"identifier_{identifier_type}" in entity:
+            identifier = entity[f"identifier_{identifier_type}"]
+            entity["entity_id"] = f"{identifier_type}_{hashlib.md5(identifier.encode('utf-8')).hexdigest()}"
+            break
+
+    return entity
