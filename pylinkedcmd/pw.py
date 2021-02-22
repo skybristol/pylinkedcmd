@@ -1,5 +1,6 @@
 import requests
 from datetime import datetime
+import math
 
 publication_api = "https://pubs.er.usgs.gov/pubs-services/publication"
 
@@ -12,7 +13,7 @@ def pw_records(self, q=None, author_id=None, mod_x_days=None, publication_year=N
     if mod_x_days is not None:
         query_url = f"{query_url}&mod_x_days={mod_x_days}"
     if publication_year is not None:
-        query_url = f"{query_url}&startYear={publication_year}&endYear={publication_year}"
+        query_url = f"{query_url}&startYear={str(publication_year)}&endYear={str(publication_year)}"
 
     r = requests.get(query_url)
 
