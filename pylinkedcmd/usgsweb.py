@@ -197,7 +197,7 @@ class UsgsWeb:
             organization_link_container = organization_container.find("a")
             if organization_link_container is not None:
                 profile_page_data["organization_link"] = organization_link_container["href"].strip()
-                profile_page_data["organization_name"] = organization_link_container.text.strip().title()
+                profile_page_data["organization_name"] = organization_link_container.text.strip()
 
         profile_image = soup.find("img", class_='staff-profile-image')
         if profile_image is not None:
