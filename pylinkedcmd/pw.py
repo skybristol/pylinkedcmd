@@ -4,7 +4,7 @@ import math
 
 publication_api = "https://pubs.er.usgs.gov/pubs-services/publication"
 
-def pw_records(self, q=None, author_id=None, mod_x_days=None, publication_year=None, page_size=1000):
+def pw_records(q=None, author_id=None, mod_x_days=None, publication_year=None, page_size=1000):
     query_url = f"{publication_api}/?page_size={page_size}"
     if q is not None:
         query_url = f"{query_url}&q={q}"
