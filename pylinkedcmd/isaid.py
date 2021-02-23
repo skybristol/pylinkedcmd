@@ -6,6 +6,7 @@ from itertools import groupby
 from operator import itemgetter
 from . import utilities
 
+
 def id_claims(claims, include_uid=True, unwind_ids=True):
     # Take care of issue with some missing object labels
     claims = [i for i in claims if len(i["object_label"]) > 0]
@@ -29,6 +30,7 @@ def id_claims(claims, include_uid=True, unwind_ids=True):
                     claim[f"object_identifier_{k}"] = v
 
     return claims
+
 
 def claims_from_usgs_profile_inventory(data):
     claims = list()
@@ -99,6 +101,7 @@ def claims_from_usgs_profile_inventory(data):
     
     return id_claims(claims)
 
+
 def claims_from_usgs_profile(data):
     claims = list()
 
@@ -164,6 +167,7 @@ def claims_from_usgs_profile(data):
             claims.append(expertise_claim)
 
     return id_claims(claims)
+
 
 def claims_from_orcid(data):
     if "givenName" not in data or "familyName" not in data:
@@ -315,6 +319,7 @@ def claims_from_orcid(data):
             claims.append(student_affiliation_claim)
 
     return id_claims(claims)
+
 
 def claims_from_doi(data):
     if isinstance(data["title"], list) and (len(data["container-title"]) == 0 or "reference_string" not in data):
@@ -529,49 +534,107 @@ def claims_from_doi(data):
 
     return id_claims(claims)
 
-summarization_properties = {
-    "Person": {
-        "facets": [
-            "job title",
-            "educational affiliation",
-            "professional affiliation",
-            "employed by",
-            "has expertise",
-            "addresses subject",
-            "author of",
-            "editor of",
-            "published in",
-            "funded by",
-            "participated in event"
-        ],
-        "category": {
-            "default": "person"
-        }
-    },
-    "CreativeWork": {
-        "facets": [
-            "authored by",
-            "edited by",
-            "addresses subject",
-            "part of event",
-            "published in",
-            "published by"
-        ],
-        "properties_from_source": ["abstract"],
-        "category": {
-            "type": "derived from source",
-            "default": "document",
-            "source prop": "type",
-            "mapping": {
-                'dataset': 'data'
-            }
-        },
-        "linkable_id": {
-            "property": "doi",
-            "resolver": "https://doi.org/"
-        }
+
+def claims_from_sb_person(data):
+    claims = list()
+
+    claim_reference = {
+        "claim_created": str(datetime.utcnow().isoformat()),
+        "claim_source": "ScienceBase Directory",
+        "reference": data["link"]["href"],
     }
-}
+
+    if "last_updated" in data:
+        claim_reference["date_qualifier"] = data["last_updated"]
+    else:
+        claim_reference["date_qualifier"] = data["_date_cached"]
+
+    person_identifiers = {
+        "sbid": data["link"]["href"]
+    }
+
+    if "email" in data:
+        person_identifiers["email"] = data["email"]
+
+    if "identifiers" in data:
+        for identifier_item in data["identifiers"]:
+            person_identifiers[identifier_item["type"].lower()] = identifier_item["key"]
+
+    subject_claim = copy(claim_reference)
+    object_claim = copy(claim_reference)
+
+    subject_claim["subject_instance_of"] = "Person"
+    subject_claim["subject_label"] = data["displayName"]
+    subject_claim["subject_identifiers"] = person_identifiers
+    object_claim["object_instance_of"] = "Person"
+    object_claim["object_label"] = data["displayName"]
+    object_claim["object_identifiers"] = person_identifiers
+
+    for k,v in person_identifiers.items():
+        subject_claim[f"subject_identifier_{k}"] = v
+        object_claim[f"object_identifier_{k}"] = v
+
+    if "jobTitle" in data:
+        job_title_claim = copy(subject_claim)
+        job_title_claim["property_label"] = "job title"
+        job_title_claim["object_instance_of"] = "FieldOfWork"
+        job_title_claim["object_label"] = data["jobTitle"]
+        claims.append(job_title_claim)
+
+    try:
+        org_info = data["extensions"]["personExtension"]["organization"]
+    except:
+        org_info = None
+
+    try:
+        usgs_person = data["extensions"]["usgsPersonExtension"]
+    except:
+        usgs_person = None
+
+    if org_info is not None:
+        org_affiliation_claim = copy(subject_claim)
+        org_affiliation_claim["property_label"] = "employed by"
+        org_affiliation_claim["object_instance_of"] = "Organization"
+        org_affiliation_claim["object_label"] = org_info["displayText"]
+        org_affiliation_claim["object_identifiers"] = {
+            "sbid": f"https://www.sciencebase.gov/directory/organization/{org_info['id']}"
+        }
+        if usgs_person is not None:
+            org_affiliation_claim["object_identifiers"]["fbms_code"] = usgs_person["orgCode"]
+
+        if "active" in data:
+            if data["active"]:
+                org_affiliation_claim["subject_qualifier"] = "Current active employee as of date_qualifier"
+            else:
+                org_affiliation_claim["subject_qualifier"] = "No longer an active employee"
+        claims.append(org_affiliation_claim)
+
+        person_affiliation_claim = copy(object_claim)
+        person_affiliation_claim["property_label"] = "employs person"
+        person_affiliation_claim["subject_instance_of"] = "Organization"
+        person_affiliation_claim["subject_label"] = org_info["displayText"]
+        person_affiliation_claim["subject_identifiers"] = {
+            "sbid": f"https://www.sciencebase.gov/directory/organization/{org_info['id']}"
+        }
+        if usgs_person is not None:
+            person_affiliation_claim["subject_identifiers"]["fbms_code"] = usgs_person["orgCode"]
+
+        if "active" in data:
+            if data["active"]:
+                person_affiliation_claim["object_qualifier"] = "Current active employee as of date_qualifier"
+            else:
+                person_affiliation_claim["object_qualifier"] = "No longer an active employee"
+        claims.append(person_affiliation_claim)
+
+    if "primaryLocation" in data and "streetAddress" in data["primaryLocation"]:
+        work_location_claim = copy(subject_claim)
+        work_location_claim["property_label"] = "work location"
+        work_location_claim["object_instance_of"] = "UnverifiedLocation"
+        work_location_claim["object_label"] = ", ".join([i for i in data["primaryLocation"]["streetAddress"].values() if i is not None])
+        claims.append(work_location_claim)
+
+    return id_claims(claims)
+
 
 def entity_from_claims(claims, target_instance_of, source_doc=None):
     if target_instance_of not in summarization_properties.keys():
@@ -649,3 +712,49 @@ def entity_from_claims(claims, target_instance_of, source_doc=None):
             break
 
     return entity
+
+
+summarization_properties = {
+    "Person": {
+        "facets": [
+            "job title",
+            "educational affiliation",
+            "professional affiliation",
+            "employed by",
+            "has expertise",
+            "addresses subject",
+            "author of",
+            "editor of",
+            "published in",
+            "funded by",
+            "participated in event"
+        ],
+        "category": {
+            "default": "person"
+        }
+    },
+    "CreativeWork": {
+        "facets": [
+            "authored by",
+            "edited by",
+            "addresses subject",
+            "part of event",
+            "published in",
+            "published by"
+        ],
+        "properties_from_source": ["abstract"],
+        "category": {
+            "type": "derived from source",
+            "default": "document",
+            "source prop": "type",
+            "mapping": {
+                'dataset': 'data'
+            }
+        },
+        "linkable_id": {
+            "property": "doi",
+            "resolver": "https://doi.org/"
+        }
+    }
+}
+

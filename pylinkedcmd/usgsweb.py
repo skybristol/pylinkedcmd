@@ -10,15 +10,16 @@ from . import utilities
 class UsgsWeb:
     def __init__(self):
         self.usgs_pro_page_listing = "https://www.usgs.gov/connect/staff-profiles"
+        self.usgs_science_center_listing = "https://www.usgs.gov/usgs-science-centers"
         self.expertise_link_pattern = re.compile(r"^\/science-explorer-results\?*")
         self.profile_link_pattern = re.compile(r"^\/staff-profiles\/*")
         self.orcid_link_pattern = re.compile(r"^https:\/\/orcid.org\/*")
         self.mailto_link_pattern = re.compile(r"^mailto:")
         self.tel_link_pattern = re.compile(r"^tel:")
         self.org_link_pattern = re.compile(r"www.usgs.gov")
-        self.usgs_web_root = "https://usgs.gov"
+        self.usgs_web_root = "https://www.usgs.gov"
 
-    def get_staff_inventory_pages(self, title_="Go to last page"):
+    def get_staff_inventory_pages(self, link=None, title_="Go to last page"):
         '''
         Unfortunately, the only way to get the entire staff inventory as presented on the USGS web that I've found is to
         iterate over every page in the closed web system and scrape listings. To figure out what pages are contained in
@@ -28,15 +29,22 @@ class UsgsWeb:
         :type title_: str
         :return: list of URLs to every page comprising the entire inventory of USGS staff
         '''
-        r = requests.get(self.usgs_pro_page_listing)
+        if link is None:
+            link = self.usgs_pro_page_listing
+
+        r = requests.get(link)
         if r.status_code != 200:
             return None
         soup = BeautifulSoup(r.content, 'html.parser')
 
-        last_page_num = soup.find('a', title=title_)["href"].split("=")[-1]
+        last_page_link = soup.findAll("a", title=title_)
+        if len(last_page_link) == 0:
+            return [link]
+
+        last_page_num = last_page_link[0]["href"].split("=")[-1]
 
         inventory_url_list = [
-            f"{self.usgs_pro_page_listing}?page={n}" for n in range(0, int(last_page_num)+1)
+            f"{link}?page={n}" for n in range(0, int(last_page_num)+1)
         ]
 
         return inventory_url_list
@@ -88,7 +96,7 @@ class UsgsWeb:
         org_link = section.find("a", href=self.org_link_pattern)
 
         person_record = {
-            "date_cached": str(datetime.utcnow().isoformat()),
+            "_date_cached": str(datetime.utcnow().isoformat()),
             "name": None,
             "title": None,
             "organization_name": None,
@@ -144,7 +152,7 @@ class UsgsWeb:
 
         profile_page_data = {
             "profile": page_url,
-            "date_cached": datetime.utcnow().isoformat(),
+            "_date_cached": datetime.utcnow().isoformat(),
             "display_name": None,
             "profile_image_url": None,
             "organization_name": None,
@@ -222,3 +230,213 @@ class UsgsWeb:
             ])
 
         return profile_page_data
+
+    def science_center_inventory(self):
+        r_sc_listing = requests.get(self.usgs_science_center_listing)
+
+        soup_sc_listing = BeautifulSoup(r_sc_listing.text, 'html.parser')
+
+        table_sc_listing = soup_sc_listing.find('table')
+
+        table_links = list()
+        for link in table_sc_listing.findAll("a"):
+            if "http" in link["href"].lower():
+                link_url = link["href"]
+            else:
+                link_url = f'{self.usgs_web_root}{link["href"]}'
+            table_links.append((link.text, link_url))
+
+        science_centers = list()
+        for row_index, row in enumerate(table_sc_listing.findAll("tr")):
+            if row_index > 0:
+                science_center_record = {
+                    "_date_cached": str(datetime.utcnow().isoformat()),
+                }
+                
+                for index,col in enumerate(row.findAll("td")):
+                    if index == 0:
+                        science_center_record["name"] = col.text.strip()
+                        for link in col.findAll("a"):
+                            science_center_record["url"] = next((i[1] for i in table_links if i[0] == col.text), None)
+                    elif index == 1:
+                        if "(" in col.text:
+                            science_center_record["center_director_qualifier"] = col.text.split("(")[-1].replace(")", "").strip().lower()
+                            science_center_record["center_director"] = col.text.split("(")[0].strip()
+                        else:
+                            science_center_record["center_director"] = col.text.strip()
+                        science_center_record["center_director_link"] = next((i[1] for i in table_links if i[0] == science_center_record["center_director"]), None)
+                    elif index == 2:
+                        if col.text != "ALL":
+                            science_center_record["regions"] = [i.strip() for i in col.text.split(",")]
+                    elif index == 3:
+                        science_center_record["state_or_territory"] = [i.strip() for i in col.text.split(",")]
+
+                employee_directory_url = f'{science_center_record["url"]}/employee-directory'
+                r_employee_directory = requests.get(employee_directory_url)
+                if r_employee_directory.status_code == 200:
+                    science_center_record["url_employee_directory"] = employee_directory_url
+
+                science_center_locations_url = f'{science_center_record["url"]}/locations'
+                r_center_locations = requests.get(science_center_locations_url)
+                if r_center_locations.status_code == 200:
+                    science_center_record["url_locations"] = science_center_locations_url
+
+                science_center_science_url = f'{science_center_record["url"]}/science'
+                r_center_science_page = requests.get(science_center_science_url)
+                if r_center_science_page.status_code == 200:
+                    science_center_record["url_science"] = science_center_science_url
+
+                science_centers.append(science_center_record)
+
+        return science_centers
+
+    def employee_directory(self, sc_inventory_record):
+        if "url_employee_directory" not in sc_inventory_record:
+            return
+        
+        directory_urls = self.get_staff_inventory_pages(link=sc_inventory_record["url_employee_directory"])
+
+        if len(directory_urls) == 0:
+            return
+
+        employee_listing = list()
+        for url in directory_urls:
+            r = requests.get(url)
+            soup = BeautifulSoup(r.text, 'html.parser')
+            table = soup.findAll("table")[0]
+            tbody = table.findAll("tbody")[0]
+
+            person_records = list()
+            for row in tbody.findAll("tr"):
+                person_record = {
+                    "_date_cached": str(datetime.utcnow().isoformat()),
+                    "science_center_name": sc_inventory_record["name"],
+                    "science_center_url": sc_inventory_record["url"],
+                    "science_center_employee_directory": sc_inventory_record["url_employee_directory"],
+                }
+                if "fbms_code" in sc_inventory_record:
+                    person_record["fbms_code"] = sc_inventory_record["fbms_code"]
+
+                for index, col in enumerate(row.findAll("td")):
+                    if index == 0:
+                        person_record["title"] = col.text.strip()
+                    elif index == 1:
+                        person_record["name"] = col.text.strip()
+                        link = col.find("a", href=True)
+                        if link is not None:
+                            if "http" in link["href"].lower():
+                                person_record["usgs_web_url"] = link["href"]
+                            else:
+                                person_record["usgs_web_url"] = f'{self.usgs_web_root}{link["href"]}'
+                    elif index == 2:
+                        person_record["email"] = col.text.strip()
+                    elif index == 3:
+                        person_record["telephone"] = col.text.strip()
+                person_records.append(person_record)
+
+            employee_listing.extend(person_records)
+
+        return employee_listing
+
+    def sc_locations(self, sc_inventory_record):
+        if "url_locations" not in sc_inventory_record:
+            return
+
+        r = requests.get(sc_inventory_record["url_locations"])
+
+        if r.status_code != 200:
+            return
+
+        soup = BeautifulSoup(r.text, 'html.parser')
+
+        locations = list()
+        for loc in soup.findAll("div", {"class": "col-sm-7"}):
+            location = {
+                "_date_cached": str(datetime.utcnow().isoformat()),
+                "science_center_name": sc_inventory_record["name"],
+                "science_center_url": sc_inventory_record["url"],
+                "science_center_locations": sc_inventory_record["url_locations"],
+            }
+
+            name_container = loc.find("h3", {'class': 'h4'})
+            name_link = name_container.find("a")
+            thoroughfare_container = loc.find('div', {'class': 'thoroughfare'})
+            locality_container = loc.find('span', {'class': 'locality'})
+            state_container = loc.find('span', {'class': 'state'})
+            postal_code_container = loc.find('span', {'class': 'postal-code'})
+            country_container = loc.find('span', {'class': 'country'})
+
+            if name_container is not None:
+                location["location_name"] = name_container.text.strip()
+
+                if name_link is not None:
+                    location["location_url"] = name_link["href"]
+
+                if thoroughfare_container is not None:
+                    location["location_address"] = thoroughfare_container.text.strip()
+            
+                if locality_container is not None:
+                    location["location_locality"] = locality_container.text.strip()
+            
+                if state_container is not None:
+                    location["location_state"] = state_container.text.strip()
+
+                if postal_code_container is not None:
+                    location["location_postal_code"] = postal_code_container.text.strip()
+
+                if country_container is not None:
+                    location["location_countryt"] = country_container.text.strip()
+
+                locations.append(location)
+            
+        if not locations:
+            return
+
+        return locations
+
+    def sc_topics(self, sc_inventory_record):
+        if "url_science" not in sc_inventory_record:
+            return
+
+        r = requests.get(sc_inventory_record["url_science"])
+
+        if r.status_code != 200:
+            return
+
+        soup = BeautifulSoup(r.text, 'html.parser')
+
+        subjects_addressed = list()
+        subject = {
+            "_date_cached": str(datetime.utcnow().isoformat()),
+            "science_center_name": sc_inventory_record["name"],
+            "science_center_url": sc_inventory_record["url"],
+            "science_center_topics": sc_inventory_record["url_science"],
+        }
+
+        theme_container = soup.find("div", {'class': 'view-content'})
+        if theme_container is not None:
+            for theme in theme_container.findAll("h3", {'class': 'h4'}):
+                theme_item = copy(subject)
+                theme_item["subject_type"] = "science theme"
+                theme_item["subject"] = theme.text.strip()
+
+                theme_link = theme.find("a")
+                if theme_link is not None:
+                    theme_item["subject_link"] = f'{self.usgs_web_root}{theme_link["href"]}'
+
+                subjects_addressed.append(theme_item)
+
+        science_topic_container = soup.find("div", {'id': 'science-pane-list'})
+        if science_topic_container is not None:
+            for topic_link in science_topic_container.findAll("a"):
+                topic_item = copy(subject)
+                topic_item["subject_type"] = "science topic"
+                topic_item["subject"] = topic_link.text.strip()
+                topic_item["subject_link"] = f'{self.usgs_web_root}{topic_link["href"]}'
+
+                subjects_addressed.append(topic_item)
+
+        if not subjects_addressed:
+            return
+
+        return subjects_addressed
