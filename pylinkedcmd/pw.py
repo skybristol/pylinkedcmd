@@ -34,7 +34,7 @@ def pw_records(q=None, author_id=None, mod_x_days=None, publication_year=None, p
     records = response_data["records"]
     
     if response_data["recordCount"] > page_size:
-        last_page_number = math.ceil(response_data["recordCount"] / page_size)
+        last_page_number = math.ceil(response_data["recordCount"] / page_size) + 1
         for page_num in range(1, last_page_number):
             r = requests.get(f"{query_url}&page_number={page_num}")
             if r.status_code != 200:
