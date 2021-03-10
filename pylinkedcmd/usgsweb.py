@@ -2,8 +2,10 @@ import requests
 from datetime import datetime
 import validators
 import re
+import sys
 from bs4 import BeautifulSoup
 from copy import copy
+import hashlib
 from . import utilities
 
 
@@ -18,6 +20,14 @@ class UsgsWeb:
         self.tel_link_pattern = re.compile(r"^tel:")
         self.org_link_pattern = re.compile(r"www.usgs.gov")
         self.usgs_web_root = "https://www.usgs.gov"
+        self.non_person_emails = [
+            None,
+            "ask@usgs.gov",
+            'usgs_yes@usgs.gov',
+            'astro_outreach@usgs.gov',
+            'gs-w-txpublicinfo@usgs.gov',
+            'library@usgs.gov'
+        ]
 
     def get_staff_inventory_pages(self, link=None, title_="Go to last page"):
         '''
@@ -73,7 +83,8 @@ class UsgsWeb:
         for section in soup.findAll(tag_, class_=class_):
             staff_listing = self.process_staff_section(section)
             if "profile" in staff_listing.keys() and staff_listing["profile"] is not None:
-                page_staff_listing.append(self.process_staff_section(section))
+                staff_listing["profile_id"] = hashlib.md5(staff_listing['profile'].encode('utf-8')).hexdigest()
+                page_staff_listing.append(staff_listing)
 
         return page_staff_listing
 
@@ -151,8 +162,10 @@ class UsgsWeb:
         soup = BeautifulSoup(r.content, 'html.parser')
 
         profile_page_data = {
+            "profile_id": hashlib.md5(page_url.encode('utf-8')).hexdigest(),
             "profile": page_url,
             "_date_cached": datetime.utcnow().isoformat(),
+            "content_size": sys.getsizeof(r.content),
             "display_name": None,
             "profile_image_url": None,
             "organization_name": None,

@@ -37,6 +37,7 @@ def lookup_orcid(orcid, return_errors=False):
         else:
             return
 
-    raw_doc["date_cached"] = str(datetime.utcnow().isoformat())
+    raw_doc["_date_cached"] = str(datetime.utcnow().isoformat())
+    raw_doc["orcid"] = raw_doc["@id"].split("/")[-1]
 
     return raw_doc

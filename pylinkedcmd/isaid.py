@@ -636,11 +636,142 @@ def claims_from_sb_person(data):
     return id_claims(claims)
 
 
+def claims_from_sipp_usgs_center(data):
+    claims = list()
+
+    claim_reference = {
+        "claim_created": str(datetime.utcnow().isoformat()),
+        "claim_source": "SIPP Service Scrubbed Dump",
+        "reference": "Science Inventory - Proposals to Products",
+        "date_qualifier": data["_date_cached"]
+    }
+
+    subject_claim = copy(claim_reference)
+    object_claim = copy(claim_reference)
+
+    subject_claim["subject_identifiers"] = {
+        "sipp_CenterCode": data["CenterCode"],
+        "sipp_SubBureauCode": data["SubBureauCode"],
+        "fbms_code": data["CostCenterPrimary"]
+    }
+    subject_claim["subject_instance_of"] = "UsgsCostCenter"
+    subject_claim["subject_label"] = data["CenterName"]
+
+    object_claim["object_identifiers"] = {
+        "sipp_CenterCode": data["CenterCode"],
+        "sipp_SubBureauCode": data["SubBureauCode"],
+        "fbms_code": data["CostCenterPrimary"]
+    }
+    object_claim["object_instance_of"] = "UsgsCostCenter"
+    object_claim["object_label"] = data["CenterName"]
+
+    if data["MissionArea"] != "REG":
+        ma_object_claim = copy(subject_claim)
+        ma_subject_claim = copy(object_claim)
+
+        ma_object_claim["property_label"] = "unitOf"
+        ma_object_claim["object_instance_of"] = "UsgsMissionArea"
+        ma_object_claim["object_label"] = sipp_labels["MissionArea"][data["MissionArea"]]
+        ma_object_claim["object_identifiers"] = {
+            "sipp_MissionArea": data["MissionArea"]
+        }
+        claims.append(ma_object_claim)
+
+        ma_subject_claim["property_label"] = "hasUnit"
+        ma_subject_claim["subject_instance_of"] = "UsgsMissionArea"
+        ma_subject_claim["subject_label"] = sipp_labels["MissionArea"][data["MissionArea"]]
+        ma_subject_claim["subject_identifiers"] = {
+            "sipp_MissionArea": data["MissionArea"]
+        }
+        claims.append(ma_subject_claim)
+
+    if data["RegionCode"] != "HQ":
+        region_object_claim = copy(subject_claim)
+        region_subject_claim = copy(object_claim)
+
+        region_object_claim["property_label"] = "unitOf"
+        region_object_claim["object_instance_of"] = "UsgsRegion"
+        region_object_claim["object_label"] = sipp_labels["RegionCode"][data["RegionCode"]]
+        region_object_claim["object_identifiers"] = {
+            "sipp_RegionCode": data["RegionCode"]
+        }
+        claims.append(region_object_claim)
+
+        region_subject_claim["property_label"] = "hasUnit"
+        region_subject_claim["subject_instance_of"] = "UsgsRegion"
+        region_subject_claim["subject_label"] = sipp_labels["RegionCode"][data["RegionCode"]]
+        region_subject_claim["subject_identifiers"] = {
+            "sipp_RegionCode": data["RegionCode"]
+        }
+        claims.append(region_subject_claim)
+
+    if data["CenterDirectorName"] is not None and data["CenterDirectorEmail"] is not None and validators.email(data["CenterDirectorEmail"]):
+        cd_subject_claim = copy(subject_claim)
+        cd_object_claim = copy(object_claim)
+
+        cd_subject_claim["property_label"] = "hasHead"
+        cd_subject_claim["object_instance_of"] = "Person"
+        cd_subject_claim["object_label"] = data["CenterDirectorName"]
+        cd_subject_claim["object_identifiers"] = {
+            "email": data["CenterDirectorEmail"]
+        }
+        cd_subject_claim["object_qualifier"] = "May be an official role title other than 'Center Director'"
+        claims.append(cd_subject_claim)
+
+        cd_object_claim["property_label"] = "headOf"
+        cd_object_claim["subject_instance_of"] = "Person"
+        cd_object_claim["subject_label"] = data["CenterDirectorName"]
+        cd_object_claim["subject_identifiers"] = {
+            "email": data["CenterDirectorEmail"]
+        }
+        cd_object_claim["subject_qualifier"] = "May be an official role title other than 'Center Director'"
+        claims.append(cd_object_claim)
+
+    for unit_org in [
+        i for i in data["child_organizations"] 
+        if i["CostCenterCode"] != data["CostCenterPrimary"]
+        and i["CostCenterName"] != data["CenterName"]
+    ]:
+        unit_org_subject_claim = copy(subject_claim)
+        unit_org_object_claim = copy(object_claim)
+
+        unit_org_subject_claim["property_label"] = "hasUnit"
+        unit_org_subject_claim["object_label"] = unit_org["CostCenterName"]
+        unit_org_subject_claim["object_instance_of"] = "UsgsCostCenter"
+        unit_org_subject_claim["object_identifiers"] = {
+            "fbms_code": unit_org["CostCenterCode"],
+            "sipp_CenterCode": unit_org["CenterCode"]
+        }
+        if unit_org["Active"] != "Y":
+            unit_org_subject_claim["object_qualifier"] = "Inactive organizational unit"
+        unit_org_subject_claim["date_qualifier"] = str(datetime.strptime(unit_org["LastChangeInBASIS"], "%Y-%m-%d").isoformat())
+        claims.append(unit_org_subject_claim)        
+
+        unit_org_object_claim["property_label"] = "unitOf"
+        unit_org_object_claim["subject_label"] = unit_org["CostCenterName"]
+        unit_org_object_claim["subject_instance_of"] = "UsgsCostCenter"
+        unit_org_object_claim["subject_identifiers"] = {
+            "fbms_code": unit_org["CostCenterCode"],
+            "sipp_CenterCode": unit_org["CenterCode"]
+        }
+        if unit_org["Active"] != "Y":
+            unit_org_object_claim["subject_qualifier"] = "Inactive organizational unit"
+        unit_org_object_claim["date_qualifier"] = str(datetime.strptime(unit_org["LastChangeInBASIS"], "%Y-%m-%d").isoformat())
+        claims.append(unit_org_object_claim)
+
+    return id_claims(claims)
+
+
 def entity_from_claims(claims, target_instance_of, source_doc=None):
     if target_instance_of not in summarization_properties.keys():
         return
 
     config = summarization_properties[target_instance_of]
+
+    if "instance_of" in config:
+        instance_of_values = config["instance_of"]
+    else:
+        instance_of_values = [target_instance_of]
 
     entity = {
         "entity_updated": str(datetime.utcnow().isoformat()),
@@ -656,6 +787,9 @@ def entity_from_claims(claims, target_instance_of, source_doc=None):
             +
             [i["object_label"] for i in claims if i["object_instance_of"] == target_instance_of]
         ))
+
+    if not all_names:
+        return
 
     if target_instance_of == "Person":
         entity["alternate_names"] = all_names
@@ -685,7 +819,7 @@ def entity_from_claims(claims, target_instance_of, source_doc=None):
         entity[prop] = list(set([
             i["object_label"] for i in claims 
             if i["property_label"] == prop 
-            and i["subject_instance_of"] == target_instance_of
+            and i["subject_instance_of"] in instance_of_values
         ]))
 
     if source_doc is not None:
@@ -705,7 +839,7 @@ def entity_from_claims(claims, target_instance_of, source_doc=None):
     if "linkable_id" in config and config["linkable_id"]["property"] in entity["identifiers"]:
         entity["link"] = f'{config["linkable_id"]["resolver"]}{entity["identifiers"][config["linkable_id"]["property"]]}'
 
-    for identifier_type in ["email","orcid","doi"]:
+    for identifier_type in ["email","orcid","doi","fbms_code"]:
         if f"identifier_{identifier_type}" in entity:
             identifier = entity[f"identifier_{identifier_type}"]
             entity["entity_id"] = f"{identifier_type}_{hashlib.md5(identifier.encode('utf-8')).hexdigest()}"
@@ -733,6 +867,35 @@ summarization_properties = {
             "default": "person"
         }
     },
+    "Organization": {
+        "facets": [
+            'published in',
+            'employed by',
+            'funded by',
+            'headOf',
+            'hasUnit',
+            'published',
+            'employs person',
+            'hasHead',
+            'author of',
+            'published by',
+            'professional affiliation',
+            'unitOf',
+            'authored by',
+            'educational affiliation',
+            'addresses subject',
+            'participated in event'
+        ],
+        "category": {
+            "default": "organization"
+        },
+        "instance_of": [
+            'Organization',
+            'UsgsMissionArea',
+            'UsgsRegion',
+            'UsgsCostCenter'
+        ]
+    },
     "CreativeWork": {
         "facets": [
             "authored by",
@@ -758,3 +921,25 @@ summarization_properties = {
     }
 }
 
+sipp_labels = {
+    "RegionCode": {
+        'HQ': 'Headquarters', 
+        'SW': 'Southwest Region', 
+        'NE': 'Northeast Region',
+        'AK': 'Alaska Region',
+        'MC': 'Midcontinent Region', 
+        'RM': 'Rocky Mountain Region', 
+        'SE': 'Southeast Region', 
+        'NWPI': "Northwest/Pacific Islands Region"
+    },
+    "MissionArea": {
+        'CSS': 'Core Science Systems Mission Area', 
+        'REG': 'Region', 
+        'EM': 'Ecosystems Mission Area', 
+        'ADMIN': 'Administration', 
+        'DO': 'Directors Office', 
+        'EMA': 'Energy and Minerals Mission Area', 
+        'WMA': 'Water Mission Area', 
+        'NH': 'Natural Hazards Mission Area'
+    }
+}
