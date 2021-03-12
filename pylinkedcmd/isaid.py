@@ -192,7 +192,7 @@ def dataset_node_from_sdc_item(item):
             })
 
     if "datasource" in item:
-        for org_name in [i["displayname"] for i in item["datasource"]]:
+        for org_name in [i["displayname"] for i in item["datasource"] if "displayname" in item["datasource"]]:
             dataset["linkages"].append({
                 "name": org_name,
                 "node_type": "Organization",
@@ -220,6 +220,8 @@ def dataset_node_from_sdc_item(item):
             })
 
     if "isoTopicKeyword" in item:
+        if NOT isinstance(item["isoTopicKeyword"], list):
+            item["isoTopicKeyword"] = [item["isoTopicKeyword"]]
         for term in item["isoTopicKeyword"]:
             dataset["linkages"].append({
                 "name": term,
