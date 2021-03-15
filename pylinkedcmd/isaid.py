@@ -205,7 +205,7 @@ def dataset_node_from_sdc_item(item):
             dataset["linkages"].append({
                 "name": place,
                 "node_type": "Place",
-                "node_relationship": "SUBJECT_IN",
+                "node_relationship": "ADDRESSES_SUBJECT",
                 "date_qualifier": date_qualifier
             })
 
@@ -215,19 +215,19 @@ def dataset_node_from_sdc_item(item):
                 "name": term,
                 "node_type": "DefinedSubjectMatter",
                 "category": "USGS Thesaurus",
-                "node_relationship": "SUBJECT_IN",
+                "node_relationship": "ADDRESSES_SUBJECT",
                 "date_qualifier": date_qualifier
             })
 
     if "isoTopicKeyword" in item:
-        if NOT isinstance(item["isoTopicKeyword"], list):
+        if not isinstance(item["isoTopicKeyword"], list):
             item["isoTopicKeyword"] = [item["isoTopicKeyword"]]
         for term in item["isoTopicKeyword"]:
             dataset["linkages"].append({
                 "name": term,
                 "node_type": "DefinedSubjectMatter",
                 "category": "ISO Topic Keyword for Geospatial Metadata",
-                "node_relationship": "SUBJECT_IN",
+                "node_relationship": "ADDRESSES_SUBJECT",
                 "date_qualifier": date_qualifier
             })
 
@@ -271,6 +271,8 @@ def work_node_from_doi_doc(doi_doc):
         "linkages": list()
     }
 
+    date_qualifier = doi_node["issued_year"]
+
     if "type" not in doi_doc or doi_doc["type"] is None or doi_doc["type"] not in list(doi_type_mapping.keys()):
         doi_node["properties"]["node_type"] = "Document"
     else:
@@ -284,7 +286,8 @@ def work_node_from_doi_doc(doi_doc):
             doi_node["linkages"].append({
                 "node_type": "SubjectMatter",
                 "relationship_type": "ADDRESSES_SUBJECT",
-                "node_name": subject
+                "node_name": subject,
+                "date_qualifier": date_qualifier
             })
 
     if "publisher" in doi_doc:
@@ -292,7 +295,8 @@ def work_node_from_doi_doc(doi_doc):
             "node_type": "Organization",
             "relationship_type": "PUBLISHED_BY",
             "node_name": doi_doc["publisher"],
-            "category": "Publishing Institution"
+            "category": "Publishing Institution",
+            "date_qualifier": date_qualifier
         })
 
     if "container-title" in doi_doc:
@@ -303,7 +307,8 @@ def work_node_from_doi_doc(doi_doc):
         doi_node["linkages"].append({
             "node_type": "Journal",
             "relationship_type": "PUBLISHED_IN",
-            "node_name": journal_name
+            "node_name": journal_name,
+            "date_qualifier": date_qualifier
         })
 
     if "funder" in doi_doc:
@@ -313,7 +318,7 @@ def work_node_from_doi_doc(doi_doc):
                 "relationship_type": "FUNDER_OF",
                 "node_name": funder["name"],
                 "category": "Funding Institution",
-
+                "date_qualifier": date_qualifier
             }
             if "DOI" in funder:
                 funder_node["identifier_doi"] = funder["DOI"]
@@ -328,7 +333,8 @@ def work_node_from_doi_doc(doi_doc):
             author_node = {
                 "properties": {
                     "node_type": "Person",
-                    "relationship_type": "AUTHOR_OF"
+                    "relationship_type": "AUTHOR_OF",
+                    "date_qualifier": date_qualifier
                 }
             }
             if "name" in author:
@@ -354,7 +360,9 @@ def work_node_from_doi_doc(doi_doc):
                 for affiliation in author["affiliation"]:
                     author_node["linkages"].append({
                         "name": affiliation,
-                        "node_type": "Organization"
+                        "node_type": "Organization",
+                        "relationship_type": "AFFILIATED_WITH",
+                        "date_qualifier": date_qualifier
                     })
             
             doi_node["linkages"].append(author_node)
