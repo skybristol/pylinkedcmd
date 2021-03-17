@@ -98,7 +98,16 @@ class Directory:
             else:
                 next_url = None
 
-        return people_listing
+        filtered_people = [
+            i for i in people_listing
+            if i["distinguishedName"] is not None
+            and i["email"] is not None
+            and "OU=Shared Mailboxes" not in i["distinguishedName"]
+            and "OU=Service Accounts" not in i["distinguishedName"]
+            and "usgs.gov" in i["email"]
+        ]
+
+        return filtered_people
 
     def all_orgs(self):
         org_listing = list()
