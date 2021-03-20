@@ -4,30 +4,53 @@ from . import utilities
 import dateutil.parser
 
 def model_node_from_sb_item(item):
-    contact_type_mapping = {
-        "Contact": "POINT_OF_CONTACT",
-        "Author": "AUTHOR_OF",
-        "Creator": "AUTHOR_OF",
-        "Cooperator/Partner": "CONTRIBUTOR",
-        "Lead Organization": "AFFILIATED_WITH",
-        "Organization": "AFFILIATED_WITH"
-    }
-    link_type_mapping = [
+    relationship_mapping = [
         {
             "sb_labels": ["sourceCode", "Source Code"],
             "node_type": "SourceCodeRepository",
-            "relationship": "SOURCED_FROM"
+            "relationship": "SOURCED_FROM",
+            "container": "source_repositories"
         },
         {
             "sb_labels": ["Citation", "Publication", "Publication "],
             "node_type": "CreativeWork",
-            "relationship": "REFERENCE"
+            "relationship": "REFERENCE",
+            "container": "references"
         },
         {
             "sb_labels": ["Model Output"],
             "node_type": "Dataset",
-            "relationship": "MODEL_OUTPUT"
-        }
+            "relationship": "MODEL_OUTPUT",
+            "container": "datasets"
+        },
+        {
+            "sb_labels": ["Contact"],
+            "container": "points_of_contact",
+            "relationship": "POINT_OF_CONTACT"
+        },
+        {
+            "sb_labels": ["Author", "Creator"],
+            "container": "authors",
+            "relationship": "AUTHOR_OF"
+        },
+        {
+            "sb_labels": ["Cooperator/Partner"],
+            "container": "contributors",
+            "relationship": "CONTRIBUTOR"
+        },
+        {
+            "sb_labels": ["Lead Organization", "Organization"],
+            "container": "organizations",
+            "relationship": "AFFILIATED_WITH"
+        },
+        {
+            "sb_labels": ["USGS Mission Area"],
+            "container": "organizations",
+            "node_type": "Organization",
+            "relationship": "AFFILIATED_WITH",
+            "ignore_names": ["External Model"],
+            "add_to_name": " Mission Area"
+        },
     ]
 
     model = {
@@ -42,7 +65,7 @@ def model_node_from_sb_item(item):
             "image_url": "",
             "image_title": ""
         },
-        "linkages": list()
+        "relationships": dict()
     }
 
     date_qualifier = item["provenance"]["lastUpdated"]
@@ -62,58 +85,75 @@ def model_node_from_sb_item(item):
             model["properties"]["image_title"] = item["previewImage"]["original"]["title"]
 
     if "contacts" in item:
-        for contact in item["contacts"]:
-            contact_node = None
-            if "type" in contact and contact["type"] == "USGS Mission Area" and contact["name"] != "External Model":
+        for contact in [c for c in item["contacts"] if "type" in c and "contactType" in c]:
+            mapping = next((i for i in relationship_mapping if contact["type"] in i["sb_labels"]), None)
+            if mapping is not None:
+                if "ignore_names" in mapping and contact["name"] in mapping["ignore_names"]:
+                    continue
+
+                if "add_to_name" in mapping:
+                    node_name = f"{contact['name']}{mapping['add_to_name']}"
+                else:
+                    node_name = contact["name"]
+
+                if "node_type" in mapping:
+                    node_type = mapping["node_type"]
+                else:
+                    node_type = contact["contactType"].title()
+
                 contact_node = {
-                    "node_type": "Organization",
-                    "name": f'{contact["name"]} Mission Area',
-                    "relationship_type": "AFFILIATED_WITH",
-                    "date_qualifier": date_qualifier
+                    "node_type": node_type,
+                    "name": node_name,
+                    "reference": item["link"]["url"],
+                    "date_qualifier": date_qualifier,
+                    "relationship_type": mapping["relationship"]
                 }
 
-            else:
-                if "contactType" in contact:
-                    contact_node = {
-                        "node_type": contact["contactType"].title(),
-                        "name": contact["name"],
-                        "date_qualifier": date_qualifier
-                    }
-                    if "email" in contact:
-                        contact_node["email"] = contact["email"]
-                    if "orcId" in contact:
-                        contact_node["orcid"] = contact["orcId"]
-                    if "oldPartyId" in contact:
-                        contact_node["identifier_sciencebase"] = f'https://www.sciencebase.gov/directory/person/{contact["oldPartyId"]}'
-                    if "type" in contact and contact["type"] in list(contact_type_mapping.keys()):
-                        contact_node["relationship_type"] = contact_type_mapping[contact["type"]]
+                relationship_container = mapping["container"]
+                if "email" in contact:
+                    contact_node["email"] = contact["email"]
+                    relationship_container  = f"identified_{mapping['container']}"
+                if "orcId" in contact:
+                    contact_node["orcid"] = contact["orcId"]
+                    relationship_container  = f"identified_{mapping['container']}"
+                if "oldPartyId" in contact:
+                    contact_node["identifier_sciencebase"] = f'https://www.sciencebase.gov/directory/person/{contact["oldPartyId"]}'
+                    relationship_container  = f"identified_{mapping['container']}"
 
-            if contact_node is not None:
-                model["linkages"].append(contact_node)
+                if relationship_container not in model["relationships"]:
+                    model["relationships"][relationship_container] = list()
+                
+                model["relationships"][relationship_container].append(contact_node)
 
     if "webLinks" in item:
         for link in [i for i in item["webLinks"] if "title" in i]:
             if "typeLabel" not in link:
                 continue
 
-            mapping = next((i for i in link_type_mapping if link["typeLabel"] in i["sb_labels"]), None)
+            mapping = next((i for i in relationship_mapping if link["typeLabel"] in i["sb_labels"]), None)
             if mapping is not None:
                 link_node = {
                     "node_type": mapping["node_type"],
                     "relationship_type": mapping["relationship"],
                     "url": link["uri"],
-                    "date_qualifier": date_qualifier
+                    "date_qualifier": date_qualifier,
+                    "reference": item["link"]["url"]
                 }
                 if link["title"] == "Code Repository":
                     link_node["name"] = f'{model["properties"]["name"]} Code Repository'
                 else:
                     link_node["name"] = link["title"]
 
+                relationship_container = mapping["container"]
                 id_from_link = utilities.actionable_id(link["uri"])
                 if id_from_link is not None and "doi" in id_from_link:
                     link_node["doi"] = id_from_link["doi"]
+                    relationship_container  = f"identified_{mapping['container']}"
 
-                model["linkages"].append(link_node)
+                if relationship_container not in model["relationships"]:
+                    model["relationships"][relationship_container] = list()
+                
+                model["relationships"][relationship_container].append(link_node)
 
     return model
 
@@ -141,11 +181,20 @@ def dataset_node_from_sdc_item(item):
         "properties": {
             "node_type": "Dataset",
             "name": item["title"],
-            "url": "",
-            "description": item["description"],
+            "url": f"https://data.usgs.gov/datacatalog/data/{item['identifier']}",
+            "description": item["description"].strip(),
             "issued_year": ""
         },
-        "linkages": list()
+        "relationships": {
+            "identified_points_of_contact": list(),
+            "unidentified_points_of_contact": list(),
+            "identified_authors": list(),
+            "unidentified_authors": list(),
+            "organizations": list(),
+            "places": list(),
+            "defined_terms": list(),
+            "undefined_terms": list()
+        }
     }
 
     if "modified" in item:
@@ -163,72 +212,88 @@ def dataset_node_from_sdc_item(item):
     if "issued" in item:
         dataset["properties"]["issued_year"] = item["issued"]
 
-    if "landingPage" in item:
-        dataset["properties"]["url"] = item["landingPage"]
-    elif "references" in item:
-        dataset["properties"]["url"] = item["references"][0]["url"]
-    elif "onlink" in item:
-        dataset["properties"]["url"] = item["onlink"]
-
     if "contactPoint" in item:
         poc_node = {
             "node_type": "Person",
             "node_relationship": "POINT_OF_CONTACT",
             "name": item["contactPoint"]["fn"],
-            "date_qualifier": date_qualifier
+            "date_qualifier": date_qualifier,
+            "reference": dataset["properties"]["url"]
         }
         if "hasEmail" in item["contactPoint"]:
             poc_node["email"] = item["contactPoint"]["hasEmail"].split(" ")[-1].strip()
-        dataset["linkages"].append(poc_node)
+            dataset["relationships"]["identified_points_of_contact"].append(poc_node)
+        else:
+            dataset["relationships"]["unidentified_points_of_contact"].append(poc_node)
     
     if "authors" in item:
         for author in [a for a in item["authors"] if isinstance(a, dict) and "nametype" in a]:
-            dataset["linkages"].append({
+            author_node = {
                 "name": author["authorname"],
                 "node_type": contact_type_mapping[author["nametype"]],
                 "node_relationship": "AUTHOR_OF",
                 "date_qualifier": date_qualifier,
-                "orcid": author["orcid"]
-            })
+                "reference": dataset["properties"]["url"]
+            }
+            if author["orcid"]:
+                author_node["orcid"] = author["orcid"]
+                dataset["relationships"]["identified_authors"].append(author_node)
+            else:
+                dataset["relationships"]["unidentified_authors"].append(author_node)
 
     if "datasource" in item:
-        for org_name in [i["displayname"] for i in item["datasource"] if "displayname" in item["datasource"]]:
-            dataset["linkages"].append({
+        for org_name in [i["displayname"] for i in item["datasource"] if "displayname" in i]:
+            dataset["relationships"]["organizations"].append({
                 "name": org_name,
                 "node_type": "Organization",
                 "node_relationship": "DATA_SOURCE",
-                "date_qualifier": date_qualifier
+                "date_qualifier": date_qualifier,
+                "reference": dataset["properties"]["url"]
             })
 
     if "placeKeyword" in item:
         for place in item["placeKeyword"]:
-            dataset["linkages"].append({
+            dataset["relationships"]["places"].append({
                 "name": place,
                 "node_type": "Place",
                 "node_relationship": "ADDRESSES_SUBJECT",
-                "date_qualifier": date_qualifier
+                "date_qualifier": date_qualifier,
+                "reference": dataset["properties"]["url"]
             })
 
     if "usgsThesaurusKeyword" in item:
         for term in item["usgsThesaurusKeyword"]:
-            dataset["linkages"].append({
+            dataset["relationships"]["defined_terms"].append({
                 "name": term,
                 "node_type": "DefinedSubjectMatter",
                 "category": "USGS Thesaurus",
                 "node_relationship": "ADDRESSES_SUBJECT",
-                "date_qualifier": date_qualifier
+                "date_qualifier": date_qualifier,
+                "reference": dataset["properties"]["url"]
             })
 
     if "isoTopicKeyword" in item:
         if not isinstance(item["isoTopicKeyword"], list):
             item["isoTopicKeyword"] = [item["isoTopicKeyword"]]
         for term in item["isoTopicKeyword"]:
-            dataset["linkages"].append({
+            dataset["relationships"]["defined_terms"].append({
                 "name": term,
                 "node_type": "DefinedSubjectMatter",
                 "category": "ISO Topic Keyword for Geospatial Metadata",
                 "node_relationship": "ADDRESSES_SUBJECT",
-                "date_qualifier": date_qualifier
+                "date_qualifier": date_qualifier,
+                "reference": dataset["properties"]["url"]
+            })
+
+    if "otherKeyword" in item:
+        for term in item["otherKeyword"]:
+            dataset["relationships"]["undefined_terms"].append({
+                "name": term,
+                "node_type": "UndefinedSubjectMatter",
+                "category": "dataset descriptive keywords",
+                "node_relationship": "ADDRESSES_SUBJECT",
+                "date_qualifier": date_qualifier,
+                "reference": dataset["properties"]["url"]
             })
 
     return dataset
@@ -249,7 +314,7 @@ def work_node_from_doi_doc(doi_doc):
         'paper-conference': 'Document',
         'reference-entry': 'Document',
         'chapter': 'Document',
-        'dataset': 'Data',
+        'dataset': 'Dataset',
         'report': 'Document',
         'thesis': 'Document',
         'peer-review': 'Document',

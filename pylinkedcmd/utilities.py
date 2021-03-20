@@ -2,12 +2,11 @@ import re
 import validators
 
 def actionable_id(identifier_string, return_resolver=True):
-    if validators.url(identifier_string):
-        if "/staff-profiles/" in identifier_string.lower():
-            return {
-                "url": identifier_string,
-                "usgs_web_url": identifier_string
-            }
+    if validators.url(identifier_string) and "/staff-profiles/" in identifier_string.lower():
+        return {
+            "url": identifier_string,
+            "profile": identifier_string.split("?")[0]
+        }
 
     if validators.email(identifier_string):
         return {
