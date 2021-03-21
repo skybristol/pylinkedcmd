@@ -2,6 +2,7 @@ import requests
 from datetime import datetime
 from . import utilities
 import dateutil.parser
+import validators
 
 def model_node_from_sb_item(item):
     relationship_mapping = [
@@ -212,16 +213,17 @@ def dataset_node_from_sdc_item(item):
     if "issued" in item:
         dataset["properties"]["issued_year"] = item["issued"]
 
-    if "contactPoint" in item:
+    if "contactPoint" in item and "hasEmail" in item["contactPoint"] and item["contactPoint"]["hasEmail"] is not None:
         poc_node = {
             "node_type": "Person",
             "node_relationship": "POINT_OF_CONTACT",
             "name": item["contactPoint"]["fn"],
             "date_qualifier": date_qualifier,
-            "reference": dataset["properties"]["url"]
+            "reference": dataset["properties"]["url"],
         }
-        if "hasEmail" in item["contactPoint"]:
-            poc_node["email"] = item["contactPoint"]["hasEmail"].split(" ")[-1].strip()
+        email_string = item["contactPoint"]["hasEmail"].split(" ")[-1].strip().lower()
+        if validators.email(email_string):
+            poc_node["email"] = email_string
             dataset["relationships"]["identified_points_of_contact"].append(poc_node)
         else:
             dataset["relationships"]["unidentified_points_of_contact"].append(poc_node)
