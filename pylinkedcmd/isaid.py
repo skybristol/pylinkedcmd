@@ -3,6 +3,96 @@ from datetime import datetime
 from . import utilities
 import dateutil.parser
 import validators
+from itertools import groupby
+import collections
+
+
+def filter_usgs_profiles(raw_profiles):
+    identified_profiles = [i for i in raw_profiles if i["email"] is not None or i["orcid"] is not None]
+    identified_profiles.sort(key=lambda x:x['email'])
+    most_likely_profile = dict()
+    for k,v in groupby(identified_profiles,key=lambda x:x['email']):
+        profiles = list([(i["profile"],i["content_size"]) for i in v])
+        if len(profiles) > 1:
+            most_likely_profile[k] = sorted(profiles,key=lambda x:(-x[1],x[0]))[0][0]
+
+    ignore_emails = [
+        None,
+        "ask@usgs.gov",
+        'usgs_yes@usgs.gov',
+        'astro_outreach@usgs.gov',
+        'gs-w-txpublicinfo@usgs.gov',
+        'library@usgs.gov'
+    ]
+    unique_emails = list(set([i["email"] for i in raw_profiles if i["email"] not in ignore_emails]))
+    unique_emails.sort()
+
+    unique_identified_profiles = list()
+    for email in unique_emails:
+        if email in most_likely_profile.keys():
+            unique_identified_profiles.append(next(i for i in identified_profiles if i["profile"] == most_likely_profile[email]))
+        else:
+            unique_identified_profiles.append(next(i for i in raw_profiles if i["email"] == email))
+
+    duplicate_orcids = [item for item, count in collections.Counter([i["orcid"] for i in unique_identified_profiles if i["orcid"] is not None]).items() if count > 1]
+    for profile in [i for i in unique_identified_profiles if i["orcid"] in duplicate_orcids]:
+        profile.update({"orcid": None})
+
+    return unique_identified_profiles
+
+
+def person_from_usgs_profile(profile_scrape):
+    person = {
+        "properties": {
+            "source_id_usgs_profiles": profile_scrape["profile"],
+            "email": None,
+            "orcid": None,
+            "name": profile_scrape["display_name"],
+            "title": None,
+            "description": None,
+            "url": profile_scrape["profile"],
+            "image": None
+        }
+    }
+
+    if validators.email(profile_scrape["email"]):
+        person["properties"]["email"] = profile_scrape["email"].lower()
+
+    if "orcid" in profile_scrape and profile_scrape["orcid"] and utilities.actionable_id(profile_scrape["orcid"]) is not None:
+        person["properties"]["orcid"] = profile_scrape["orcid"]
+
+    if "profile_image_url" in profile_scrape and profile_scrape["profile_image_url"] is not None and "placeholder-profile" not in profile_scrape["profile_image_url"]:
+        person["properties"]["image"] = profile_scrape["profile_image_url"]
+
+    if profile_scrape["body_content_links"]:
+        person["creative_works"] = list()
+        for link in profile_scrape["body_content_links"]:
+            work = {
+                "node_type": "CreativeWork",
+                "relationship": "CONTRIBUTED_TO",
+                "name": link["link_text"],
+                "url": link["link_href"],
+                "date_qualifier": profile_scrape["_date_cached"],
+                "reference": profile_scrape["profile"]
+            }
+            check_url = utilities.actionable_id(link["link_href"])
+            if check_url is not None and "doi" in check_url:
+                work["doi"] = check_url["doi"]
+            person["creative_works"].append(work)
+
+    if profile_scrape["expertise"]:
+        person["expertise"] = [
+            {
+                "node_type": "Expertise",
+                "relationship": "HAS_EXPERTISE",
+                "name": expertise_term,
+                "date_qualifier": profile_scrape["_date_cached"],
+                "reference": profile_scrape["profile"]
+            } for expertise_term in profile_scrape["expertise"]
+        ]
+
+    return person
+
 
 def model_node_from_sb_item(item):
     relationship_mapping = [

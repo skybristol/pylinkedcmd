@@ -167,6 +167,8 @@ class UsgsWeb:
             "_date_cached": datetime.utcnow().isoformat(),
             "content_size": sys.getsizeof(r.content),
             "display_name": None,
+            "title": None,
+            "description": None,
             "profile_image_url": None,
             "organization_name": None,
             "organization_link": None,
@@ -175,6 +177,18 @@ class UsgsWeb:
             "body_content_links": list(),
             "expertise": list()
         }
+
+        title_section = soup.find("h2", class_="staff-profile-title")
+        if title_section is not None:
+            title_text = title_section.text.strip()
+            if title_text:
+                profile_page_data["title"] = title_text
+
+        profile_lead = soup.find('div', class_="lead")
+        if profile_lead is not None:
+            description_text = profile_lead.text.strip()
+            if description_text:
+                profile_page_data["description"] = description_text
 
         expertise_section = soup.find("section", class_="staff-expertise")
         if expertise_section is not None:
