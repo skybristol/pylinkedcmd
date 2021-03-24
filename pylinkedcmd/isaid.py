@@ -45,15 +45,24 @@ def person_from_usgs_profile(profile_scrape):
     person = {
         "properties": {
             "source_id_usgs_profiles": profile_scrape["profile"],
+            "_date_cached": profile_scrape["_date_cached"],
             "email": None,
             "orcid": None,
             "name": profile_scrape["display_name"],
             "title": None,
             "description": None,
             "url": profile_scrape["profile"],
-            "image": None
+            "image": None,
+            "organization_name": profile_scrape["organization_name"],
+            "organization_link": profile_scrape["organization_link"]
         }
     }
+
+    if "title" in profile_scrape:
+        person["properties"]["title"] = profile_scrape["title"]
+
+    if "description" in profile_scrape:
+        person["properties"]["description"] = profile_scrape["description"]
 
     if validators.email(profile_scrape["email"]):
         person["properties"]["email"] = profile_scrape["email"].lower()
@@ -155,8 +164,7 @@ def model_node_from_sb_item(item):
             "last_updated": item["provenance"]["lastUpdated"],
             "image_url": "",
             "image_title": ""
-        },
-        "relationships": dict()
+        }
     }
 
     date_qualifier = item["provenance"]["lastUpdated"]
@@ -171,7 +179,7 @@ def model_node_from_sb_item(item):
         model["properties"]["alternateName"] = item["subTitle"]
 
     if "previewImage" in item and "original" in item["previewImage"]:
-        model["properties"]["image_url"] = item["previewImage"]["original"]["viewUri"]
+        model["properties"]["image"] = item["previewImage"]["original"]["viewUri"]
         if "title" in item["previewImage"]["original"]:
             model["properties"]["image_title"] = item["previewImage"]["original"]["title"]
 
@@ -211,10 +219,10 @@ def model_node_from_sb_item(item):
                     contact_node["identifier_sciencebase"] = f'https://www.sciencebase.gov/directory/person/{contact["oldPartyId"]}'
                     relationship_container  = f"identified_{mapping['container']}"
 
-                if relationship_container not in model["relationships"]:
-                    model["relationships"][relationship_container] = list()
+                if relationship_container not in model:
+                    model[relationship_container] = list()
                 
-                model["relationships"][relationship_container].append(contact_node)
+                model[relationship_container].append(contact_node)
 
     if "webLinks" in item:
         for link in [i for i in item["webLinks"] if "title" in i]:
@@ -241,10 +249,10 @@ def model_node_from_sb_item(item):
                     link_node["doi"] = id_from_link["doi"]
                     relationship_container  = f"identified_{mapping['container']}"
 
-                if relationship_container not in model["relationships"]:
-                    model["relationships"][relationship_container] = list()
+                if relationship_container not in model:
+                    model[relationship_container] = list()
                 
-                model["relationships"][relationship_container].append(link_node)
+                model[relationship_container].append(link_node)
 
     return model
 
@@ -344,6 +352,8 @@ def dataset_node_from_sdc_item(item):
             })
 
     if "placeKeyword" in item:
+        if not isinstance(item["placeKeyword"], list):
+            item["placeKeyword"] = [item["placeKeyword"]]
         for place in item["placeKeyword"]:
             dataset["relationships"]["places"].append({
                 "name": place,
@@ -354,6 +364,8 @@ def dataset_node_from_sdc_item(item):
             })
 
     if "usgsThesaurusKeyword" in item:
+        if not isinstance(item["usgsThesaurusKeyword"], list):
+            item["usgsThesaurusKeyword"] = [item["usgsThesaurusKeyword"]]
         for term in item["usgsThesaurusKeyword"]:
             dataset["relationships"]["defined_terms"].append({
                 "name": term,
@@ -378,6 +390,8 @@ def dataset_node_from_sdc_item(item):
             })
 
     if "otherKeyword" in item:
+        if not isinstance(item["otherKeyword"], list):
+            item["otherKeyword"] = [item["otherKeyword"]]
         for term in item["otherKeyword"]:
             dataset["relationships"]["undefined_terms"].append({
                 "name": term,
