@@ -7,7 +7,6 @@ from copy import copy
 import unidecode
 from getpass import getpass
 import re
-import pandas as pd
 
 
 class Directory:
@@ -123,19 +122,6 @@ class Directory:
                 next_url = None
 
         return org_listing  
-
-    def add_last_update(self, sbid):
-        if not self.authenticated:
-            return
-
-        self.sb._session.headers.update({'Accept': 'text/html'})
-        r = self.sb._session.get(sbid)
-        tables = pd.read_html(r.text)
-        return {
-            "sbid": sbid,
-            "last_updated": dateutil.parser.parse(tables[0].loc[tables[0][0] == "Last Updated"][1].values[0], tzinfos=timezone_info),
-            "last_updated_by": tables[0].loc[tables[0][0] == "Last Updated By"][1].values[0]
-        }
 
 
 timezone_info = {
