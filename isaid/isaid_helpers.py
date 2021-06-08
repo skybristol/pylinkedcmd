@@ -5,7 +5,7 @@ import pickle
 import os
 from neo4j import GraphDatabase
 
-cache_api_domain = "49l0anek31.execute-api.us-west-2.amazonaws.com"
+cache_api_domain = os.environ["CHS_ISAID_API"]
 cache_api_path = "prod"
 
 local_cache_path = "file:////Users/sbristol/github_skybristol/pylinkedcmd/isaid/"
