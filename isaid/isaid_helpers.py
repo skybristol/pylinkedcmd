@@ -8,7 +8,7 @@ from neo4j import GraphDatabase
 cache_api_domain = os.environ["CHS_ISAID_API"]
 cache_api_path = "prod"
 
-local_cache_path = "file:////Users/sbristol/github_skybristol/pylinkedcmd/isaid/"
+local_cache_path = os.envidon["LOCAL_CACHE_PATH"]
 local_cache_path_rel = "data/"
 
 f_mas_n_regions = f"{local_cache_path_rel}usgs_missions_regions.csv"
@@ -49,7 +49,7 @@ f_graphable_doi_contacts = f"{local_cache_path_rel}graphable_table_doi_contacts.
 f_graphable_doi_funders = f"{local_cache_path_rel}graphable_table_doi_funders.csv"
 f_graphable_doi_terms = f"{local_cache_path_rel}graphable_table_doi_terms.csv"
 
-center_info_link = 'https://sipp.cr.usgs.gov/SIPPService/CenterInfo.ashx'
+center_info_link = os.environ["SIPP_CENTERS"]
 
 graph_driver = GraphDatabase.driver(
     os.environ["NEO4J_CONX"],
