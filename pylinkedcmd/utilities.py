@@ -39,3 +39,22 @@ def actionable_id(identifier_string, return_resolver=True):
 def chunks(dict_list, chunk_size=1000):
     for i in range(0, len(dict_list), chunk_size):
         yield dict_list[i:i+chunk_size]
+
+def doi_from_string(str_value):
+    checker = re.search(r'(10[.][0-9]{4,}[^\s"/<>]*/[^\s"<>]+)', str_value)
+    if checker is None:
+        return
+    else:
+        link_part_pointers = [
+            "/abstract",
+            "/full",
+            "/summary"
+        ]
+        
+        doi_string = checker.group(1)
+        
+        for part in link_part_pointers:
+            doi_string = doi_string.replace(part, '')
+            
+        return doi_string
+    
