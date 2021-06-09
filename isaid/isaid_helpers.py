@@ -8,7 +8,7 @@ from neo4j import GraphDatabase
 cache_api_domain = os.environ["CHS_ISAID_API"]
 cache_api_path = "prod"
 
-local_cache_path = os.envidon["LOCAL_CACHE_PATH"]
+local_cache_path = os.environ["LOCAL_CACHE_PATH"]
 local_cache_path_rel = "data/"
 
 f_mas_n_regions = f"{local_cache_path_rel}usgs_missions_regions.csv"
