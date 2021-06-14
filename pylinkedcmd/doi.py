@@ -57,9 +57,12 @@ def entity_from_doi(doi_doc):
         "doi": doi_doc["DOI"],
         "name": doi_doc["title"],
         "url": doi_doc["URL"],
-        "publisher": doi_doc["publisher"],
+        "publisher": None,
         "date_qualifier": doi_doc["_date"]
     }
+
+    if "publisher" in doi_doc:
+        summary_doc["publisher"] = doi_doc["publisher"]
 
     if "issued" in doi_doc and isinstance(doi_doc["issued"]["date-parts"], list) and len(doi_doc["issued"]["date-parts"]) == 1:
         issued_year = doi_doc["issued"]["date-parts"][0][0]
@@ -77,7 +80,7 @@ def entity_from_doi(doi_doc):
         summary_doc["description"] = doi_doc["abstract"]
 
     if "container-title" in doi_doc:
-        if doi_doc["publisher"] == "US Geological Survey":
+        if summary_doc["publisher"] == "US Geological Survey":
             summary_doc["journal"] = f"USGS {doi_doc['container-title']}"
         else:
             summary_doc["journal"] = doi_doc['container-title']

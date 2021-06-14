@@ -34,6 +34,7 @@ f_graphable_sdc_rels_md = f"{local_cache_path_rel}graphable_table_sdc_md.csv"
 f_graphable_sdc_rels_author = f"{local_cache_path_rel}graphable_table_sdc_author.csv"
 
 f_common_geo_areas = f"{local_cache_path_rel}CommonGeographicAreas.db"
+f_usgs_thesaurus_source = f"{local_cache_path_rel}thesauri.zip"
 f_usgs_thesaurus = f"{local_cache_path_rel}thesauri.db"
 
 f_graphable_thesaurus_terms = f"{local_cache_path_rel}graphable_table_usable_usgs_thesaurus_terms.csv"
@@ -65,9 +66,14 @@ def cache_chs_cache(cache, exclude_errors=True):
     all_data = list()
 
     limit = 400
-    page_num = 1
+    api_path = f"{cache_api_domain}{cache_api_path}?es_search_index=cache_{cache}&page_size={limit}&scan=True"
+    results = None
     while True:
-        api_path = f"https://{cache_api_domain}/{cache_api_path}?es_search_index=cache_{cache}&page_size={limit}&page={page_num}"
+        if results and "_scroll_id" in results and "scroll_id" not in api_path:
+            api_path = f"{api_path}&scroll_id={results['_scroll_id']}"
+
+        print(api_path)
+
         results = requests.get(api_path).json()
 
         try:
@@ -79,7 +85,6 @@ def cache_chs_cache(cache, exclude_errors=True):
                 else:
                     docs = [i["_source"] for i in results["hits"]["hits"]]
                 all_data.extend(docs)
-                page_num += 1
         except:
             print(api_path)
             print(results)
