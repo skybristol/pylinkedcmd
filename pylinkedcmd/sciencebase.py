@@ -83,6 +83,19 @@ class Directory:
 
         return None
 
+    def person_query_urls(self, limit=1000):
+        query_url = f"{self.sb_root_url}&max=1"
+        r_starter_query = requests.get(query_url).json()
+        total_records = int(r_starter_query["total"])
+        limit_for_offset = int(limit)
+        upper_range = int((total_records / limit_for_offset) + 1)
+
+        result_urls = list()
+        for page_num in range(0,upper_range):
+            result_urls.append(f"{self.sb_root_url}&max={limit}&offset={page_num * limit}")
+
+        return result_urls
+
     def all_people(self):
 
         people_listing = list()
