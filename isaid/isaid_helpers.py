@@ -4,8 +4,11 @@ import requests
 import pickle
 import os
 from neo4j import GraphDatabase
+from io import StringIO
+from html.parser import HTMLParser
 
 cache_api_domain = os.environ["CHS_ISAID_API"]
+cache_api_domain_aggs = os.environ["CHS_ISAID_API_AGGS"]
 cache_api_path = "prod"
 
 local_cache_path = os.environ["LOCAL_CACHE_PATH"]
@@ -13,6 +16,7 @@ local_cache_path_rel = "data/"
 
 f_mas_n_regions = f"{local_cache_path_rel}usgs_missions_regions.csv"
 f_usgs_centers = f"{local_cache_path_rel}usgs_cost_centers.csv"
+f_cost_center_projects = f"{local_cache_path_rel}sipp_cost_center_projects.p"
 
 f_raw_profiles = f"{local_cache_path_rel}process_usgs_profiles.p"
 f_graphable_profiles = f"{local_cache_path_rel}graphable_table_profile_entities.csv"
@@ -24,6 +28,9 @@ f_graphable_sb_people = f"{local_cache_path_rel}graphable_table_sb_people.csv"
 
 f_raw_orcid = f"{local_cache_path_rel}process_orcid.p"
 f_graphable_orcid = f"{local_cache_path_rel}graphable_table_orcid.csv"
+
+f_process_pw = f"{local_cache_path_rel}process_pw.p"
+f_graphable_pw = f"{local_cache_path_rel}graphable_pw.csv"
 
 f_raw_sdc = f"{local_cache_path_rel}process_sdc.p"
 f_graphable_sdc = f"{local_cache_path_rel}graphable_table_sdc.csv"
@@ -50,7 +57,10 @@ f_graphable_doi_contacts = f"{local_cache_path_rel}graphable_table_doi_contacts.
 f_graphable_doi_funders = f"{local_cache_path_rel}graphable_table_doi_funders.csv"
 f_graphable_doi_terms = f"{local_cache_path_rel}graphable_table_doi_terms.csv"
 
+f_wd_reference = f"{local_cache_path_rel}wd_reference.p"
+
 center_info_link = os.environ["SIPP_CENTERS"]
+project_task_master_api = os.environ["SIPP_PROJECT_COST_MASTER"]
 
 graph_driver = GraphDatabase.driver(
     os.environ["NEO4J_CONX"],
@@ -71,8 +81,6 @@ def cache_chs_cache(cache, exclude_errors=True):
     while True:
         if results and "_scroll_id" in results and "scroll_id" not in api_path:
             api_path = f"{api_path}&scroll_id={results['_scroll_id']}"
-
-        print(api_path)
 
         results = requests.get(api_path).json()
 
@@ -103,3 +111,21 @@ def active_usgs_emails(raw_sb_directory_file=f_raw_sb_people):
     ]))
     
     return emails
+
+class MLStripper(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.reset()
+        self.strict = False
+        self.convert_charrefs= True
+        self.text = StringIO()
+    def handle_data(self, d):
+        self.text.write(d)
+    def get_data(self):
+        return self.text.getvalue()
+
+def strip_tags(html):
+    s = MLStripper()
+    s.feed(html)
+    return s.get_data()
+
