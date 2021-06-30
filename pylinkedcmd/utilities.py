@@ -41,20 +41,18 @@ def chunks(dict_list, chunk_size=1000):
         yield dict_list[i:i+chunk_size]
 
 def doi_from_string(str_value):
-    checker = re.search(r'(10[.][0-9]{4,}[^\s"/<>]*/[^\s"<>]+)', str_value)
-    if checker is None:
-        return
-    else:
-        link_part_pointers = [
-            "/abstract",
-            "/full",
-            "/summary"
-        ]
-        
-        doi_string = checker.group(1)
-        
-        for part in link_part_pointers:
-            doi_string = doi_string.replace(part, '')
-            
-        return doi_string
+    checker = re.findall(r'(10[.][0-9]{4,}[^\s"/<>]*/[^\s"<>]+)', str_value)
+    link_part_pointers = [
+        "/abstract",
+        "/full",
+        "/summary"
+    ]
     
+    for doi_string in checker:
+        for part in link_part_pointers:
+            if part in doi_string:
+                doi_string.replace(part, '')
+        if doi_string[-1] == ".":
+            doi_string = doi_string[0:-1]
+        
+    return checker

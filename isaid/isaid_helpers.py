@@ -58,9 +58,23 @@ f_graphable_doi_funders = f"{local_cache_path_rel}graphable_table_doi_funders.cs
 f_graphable_doi_terms = f"{local_cache_path_rel}graphable_table_doi_terms.csv"
 
 f_wd_reference = f"{local_cache_path_rel}wd_reference.p"
+f_ner_reference = f"{local_cache_path_rel}ner_reference.p"
 
-center_info_link = os.environ["SIPP_CENTERS"]
-project_task_master_api = os.environ["SIPP_PROJECT_COST_MASTER"]
+api_sipp_center_info = os.environ["SIPP_CENTERS"]
+api_sipp_project_listing = os.environ["SIPP_PROJECT_COST_MASTER"]
+api_sipp_project_narratives = os.environ["SIPP_PROJECT_NARRATIVES"]
+api_sipp_project_task_details = os.environ["SIPP_PROJECT_TASK_DETAILS"]
+api_sipp_project_staffing = os.environ["SIPP_PROJECT_STAFFING"]
+api_sipp_account_detail = os.environ["SIPP_ACCOUNT_DETAIL"]
+
+local_cache_path_sipp = f"{local_cache_path_rel}sipp/"
+f_raw_sipp_project_listing = f"{local_cache_path_sipp}raw_ProjectTaskMaster.p"
+f_raw_sipp_project_task_narrative = f"{local_cache_path_sipp}raw_ProjectTaskXML.p"
+f_raw_sipp_project_staffing = f"{local_cache_path_sipp}raw_StaffRequestDetail.p"
+
+f_graphable_sipp_personnel = f"{local_cache_path_rel}graphable_sipp_personnel.csv"
+f_graphable_sipp_projects = f"{local_cache_path_rel}graphable_sipp_projects.csv"
+f_graphable_sipp_staffing = f"{local_cache_path_rel}graphable_sipp_staffing.csv"
 
 graph_driver = GraphDatabase.driver(
     os.environ["NEO4J_CONX"],
