@@ -13,13 +13,11 @@ with open('HISTORY.rst') as history_file:
 requirements = [
     'requests',
     'sciencebasepy',
-    'fuzzywuzzy',
-    'SPARQLWrapper',
     'validators',
     'pydash',
     'beautifulsoup4',
-    'nltk',
-    'jsonbender'
+    'jsonbender',
+    'Unidecode'
 ]
 
 setup_requirements = [ ]
@@ -58,6 +56,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/skybristol/pylinkedcmd',
-    version='0.1.3',
+    version='0.2.3',
     zip_safe=False,
 )
