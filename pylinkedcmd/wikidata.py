@@ -5,6 +5,7 @@ import time
 wikidata_reference = [
     {
         "source_label": "Wikidata Mineral Species",
+        "concept_label": "MINERAL_SPECIES",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q12089225",
         "source_rel": "P31",
@@ -12,6 +13,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata Chemical Elements",
+        "concept_label": "CHEMICAL_ELEMENT",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q11344",
         "source_rel": "P31",
@@ -19,6 +21,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata Sedimentary Rocks",
+        "concept_label": "SEDIMENTARY_ROCK",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q82480",
         "source_rel": "P279",
@@ -26,6 +29,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata Clastic Sediments",
+        "concept_label": "CLASTIC_SEDIMENT",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q12372934",
         "source_rel": "P279",
@@ -33,6 +37,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata Sovereign States",
+        "concept_label": "SOVEREIGN_STATE",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q3624078",
         "source_rel": "P31",
@@ -40,6 +45,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata US States",
+        "concept_label": "US_STATE",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q35657",
         "source_rel": "P31",
@@ -47,6 +53,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata Global Seas and Oceans",
+        "concept_label": "SEA_OR_OCEAN",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q165",
         "source_rel": "P31",
@@ -54,6 +61,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata Global Faults",
+        "concept_label": "GEOLOGIC_FAULT",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q47089",
         "source_rel": "P31",
@@ -61,6 +69,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata Global Volcanos",
+        "concept_label": "NAMED_VOLCANO",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q8072",
         "source_rel": "P31",
@@ -68,6 +77,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata Global Earthquakes",
+        "concept_label": "NAMED_EARTHQUAKE",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q7944",
         "source_rel": "P31",
@@ -75,6 +85,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata US National Parks",
+        "concept_label": "NATIONAL_PARK",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q34918903",
         "source_rel": "P31",
@@ -82,6 +93,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata US National Monuments",
+        "concept_label": "NATIONAL_MONUMENT",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q893775",
         "source_rel": "P31",
@@ -89,6 +101,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata US National Forests",
+        "concept_label": "NATIONAL_FOREST",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q612741",
         "source_rel": "P31",
@@ -96,6 +109,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata US Wild and Scenic Rivers",
+        "concept_label": "WILD_AND_SCENIC_RIVER",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q846385",
         "source_rel": "P31",
@@ -103,6 +117,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata Geologic Formations",
+        "concept_label": "GEOLOGIC_FORMATION",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q736917",
         "source_rel": "P31",
@@ -110,6 +125,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata Aquifers",
+        "concept_label": "NAMED_GROUNDWATER_AQUIFER",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q208791",
         "source_rel": "P31",
@@ -117,6 +133,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata Fields of Science",
+        "concept_label": "FIELD_OF_SCIENCE",
         "retrieval_type": "source relationship",
         "source_reference": "https://www.wikidata.org/wiki/Q2465832",
         "source_rel": "P31",
@@ -124,6 +141,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata Additional Commodities",
+        "concept_label": "GEOLOGIC_COMMODITY_OR_MATERIAL",
         "retrieval_type": "identifier list",
         "source_reference": "Wikidata specific identifiers",
         "identifier_list": [
@@ -136,6 +154,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata US Territories",
+        "concept_label": "US_TERRITORY",
         "retrieval_type": "specialized query",
         "source_reference": "Wikidata US territories references",
         "query_criteria": '?item wdt:P31 wd:Q1352230. ?item wdt:P31 wd:Q462778.',
@@ -143,6 +162,7 @@ wikidata_reference = [
     },
     {
         "source_label": "Wikidata US Counties",
+        "concept_label": "US_COUNTY",
         "retrieval_type": "source relationship multi",
         "source_reference": "Wikidata county of state instances",
         "identifier_list": [
@@ -244,6 +264,7 @@ def get_wd_concepts(wd_source, wd_reference=wikidata_reference, limit=10000):
                 "source": source_config["source_label"],
                 "source_reference": source_config["source_reference"], 
                 "label": i["itemLabel"]["value"],
+                "concept_label": source_config["concept_label"],
                 "identifier": i["item"]["value"],
                 "label_source": "preferred"
             }
@@ -261,6 +282,7 @@ def get_wd_concepts(wd_source, wd_reference=wikidata_reference, limit=10000):
                                 "source": source_config["source_label"],
                                 "source_reference": source_config["source_reference"], 
                                 "label": alt_label.strip(),
+                                "concept_label": source_config["concept_label"],
                                 "label_preferred": item["itemLabel"]["value"],
                                 "identifier": item["item"]["value"],
                                 "label_source": "alternate"

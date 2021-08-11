@@ -6,6 +6,8 @@ import os
 from neo4j import GraphDatabase
 from io import StringIO
 from html.parser import HTMLParser
+import pandas as pd
+import meilisearch
 
 cache_api_domain = os.environ["CHS_ISAID_API"]
 cache_api_domain_aggs = os.environ["CHS_ISAID_API_AGGS"]
@@ -76,6 +78,8 @@ f_graphable_sipp_personnel = f"{local_cache_path_rel}graphable_sipp_personnel.cs
 f_graphable_sipp_projects = f"{local_cache_path_rel}graphable_sipp_projects.csv"
 f_graphable_sipp_staffing = f"{local_cache_path_rel}graphable_sipp_staffing.csv"
 
+f_graphable_reference_terms = f"{local_cache_path_rel}graphable_reference_terms.csv"
+
 graph_driver = GraphDatabase.driver(
     os.environ["NEO4J_CONX"],
     auth=(
@@ -85,6 +89,21 @@ graph_driver = GraphDatabase.driver(
 )
 
 graphdb = "isaid"
+
+def get_facet_doc(facet_name):
+    file_name = f"{local_cache_path_rel}facet_docs_{facet_name}.md"
+    if os.path.exists(file_name):
+        with open(file_name, "r") as f:
+            return f.read()
+    else:
+        return
+
+def get_search_client():
+    search_client = meilisearch.Client(
+        os.environ["SEARCH_CLIENT"],
+        os.environ["SEARCH_CLIENT_KEY"]
+    )
+    return search_client
 
 def cache_chs_cache(cache, exclude_errors=True):
     all_data = list()
@@ -126,6 +145,35 @@ def active_usgs_emails(raw_sb_directory_file=f_raw_sb_people):
     
     return emails
 
+def reference_terms_to_graph():
+    if not os.path.exists(f_graphable_reference_terms):
+        return
+
+    with graph_driver.session(database=graphdb) as session:
+        session.run("""
+        LOAD CSV WITH HEADERS FROM '%(source_path)s/%(source_file)s' AS row
+        WITH row
+            MERGE (ds:DefinedSubjectMatter {url: row.url}) 
+            ON CREATE
+                SET ds.name = row.label,
+                ds.description = row.description,
+                ds.source = row.source,
+                ds.reference = row.source_reference,
+                ds.concept_label = row.concept_label
+        """ % {
+            "source_path": local_cache_path,
+            "source_file": f_graphable_reference_terms
+        })
+        
+        ds_in_graph = session.run("""
+        MATCH (ds:DefinedSubjectMatter)
+        RETURN ds.name AS name, ds.url AS url
+        """).data()
+        
+    load_file_terms = pd.read_csv(f_graphable_reference_terms).to_dict(orient="records")
+    return [i for i in load_file_terms if i["url"] not in [ds["url"] for ds in ds_in_graph]]
+    
+    
 class MLStripper(HTMLParser):
     def __init__(self):
         super().__init__()
